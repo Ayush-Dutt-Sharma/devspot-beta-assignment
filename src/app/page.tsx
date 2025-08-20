@@ -1,103 +1,172 @@
-import Image from "next/image";
+"use client";
+import React, { useState } from 'react';
+import Header from '@/components/layout/Header';
+import Sidebar from '@/components/layout/Sidebar';
+import MessageBubble from '@/components/chat/MessageBubble';
+import ChatInput from '@/components/chat/ChatInput';
+import ActionButton from '@/components/ui/ActionButton';
+import ModeCard from '@/components/ui/ModelCard';
+import { Zap, User, Compass, Bot, FileEdit } from 'lucide-react';
 
-export default function Home() {
+type Mode = 'hackathon' | 'profile' | 'explore' | null;
+type Method = 'ai' | 'manual' | null;
+type Message = {
+  id: number;
+  sender: 'bot' | 'user';
+  content: string;
+};
+const DevSpotChatInterface = () => {
+  const [selectedMode, setSelectedMode] = useState<Mode>(null);
+  const [selectedMethod, setSelectedMethod] = useState<Method>(null);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 1,
+      sender: 'bot',
+      content: 'Welcome to DevSpot! I can help you create your technology profile, host a hackathon, and more. What can I do for you?'
+    }
+  ]);
+
+  const handleModeSelect = (mode:Mode ) => {
+    setSelectedMode(mode);
+    
+    const newUserMessage: Message = {
+      id: Date.now(),
+      sender: 'user' as 'user',
+      content: mode === 'hackathon' ? 'Help me create a hackathon' : 
+               mode === 'profile' ? 'Create my technology profile' :
+               'I want to explore DevSpot'
+    };
+
+    const newBotMessage: Message = {
+      id: Date.now() + 1,
+      sender: 'bot' as 'bot',
+      content: mode === 'hackathon' 
+        ? "Great! I'd love to help you create an amazing hackathon. How would you like to proceed?"
+        : mode === 'profile'
+        ? "Perfect! Let's build your technology profile. I'll guide you through the process."
+        : "Perfect! I'm here to help you explore DevSpot. You can ask me about hackathons, how to participate, platform features, or anything else you'd like to know!"
+    };
+
+    setMessages(prev => [...prev, newUserMessage, newBotMessage]);
+  };
+
+  const handleMethodSelect = (method:Method) => {
+    setSelectedMethod(method);
+    
+    const newUserMessage: Message = {
+      id: Date.now(),
+      sender: 'user' as 'user',
+      content: method === 'ai' ? 'AI-Powered Setup' : 'Manual Form'
+    };
+
+    const newBotMessage: Message = {
+      id: Date.now() + 1,
+      sender: 'bot' as 'bot',
+      content: method === 'ai' 
+        ? "Excellent choice! I'll guide you through creating your hackathon step by step. Let's start with the basics - what would you like to call your hackathon?"
+        : "Great! I'll redirect you to our form interface where you can fill out all the details manually. This gives you full control over every aspect of your hackathon setup."
+    };
+
+    setMessages(prev => [...prev, newUserMessage, newBotMessage]);
+  };
+
+  const handleSendMessage = (message: string) => {
+    const newUserMessage: Message = {
+      id: Date.now(),
+      sender: 'user' as 'user',
+      content: message
+    };
+    
+    setMessages(prev => [...prev, newUserMessage]);
+    
+    setTimeout(() => {
+      const botResponse: Message = {
+        id: Date.now(),
+        sender: 'bot' as 'bot',
+        content: "Thanks for your message! This is where the AI conversation would continue based on your input."
+      };
+      setMessages(prev => [...prev, botResponse]);
+    }, 1000);
+  };
+
+  const showInitialOptions = selectedMode === null;
+  const showMethodSelection = selectedMode === 'hackathon' && selectedMethod === null;
+  const showChatInterface = selectedMode === 'explore' || 
+                           (selectedMode === 'hackathon' && selectedMethod === 'ai') ||
+                           (selectedMode === 'profile');
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="h-screen bg-devspot-dark text-white flex flex-col">
+      <Header onSearch={(query) => console.log('Search:', query)} />
+      
+      <div className="flex-1 flex ">
+               <Sidebar activeItem="Chat with Spot" />
+   
+        <div className="flex-1 flex flex-col">
+       
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
+            {messages.map((message, index) => (
+              <MessageBubble 
+                key={message.id} 
+                message={message.content} 
+                sender={message.sender}
+              >
+                {message.sender === 'bot' && index === 0 && showInitialOptions && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <ModeCard
+                      icon={Zap}
+                      title="Help me create a hackathon"
+                      description="Get AI assistance to design your perfect hackathon event"
+                      onClick={() => handleModeSelect('hackathon')}
+                    />
+                    <ModeCard
+                      icon={User}
+                      title="Create my technology profile"
+                      description="Build your developer profile and showcase your skills"
+                      onClick={() => handleModeSelect('profile')}
+                    />
+                    <ModeCard
+                      icon={Compass}
+                      title="I want to explore DevSpot"
+                      description="Learn about the platform and discover opportunities"
+                      onClick={() => handleModeSelect('explore')}
+                    />
+                  </div>
+                )}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+                {message.sender === 'bot' && 
+                 message.content.includes("How would you like to proceed?") && 
+                 showMethodSelection && (
+                  <div className="flex gap-4">
+                    <ActionButton
+                      onClick={() => handleMethodSelect('ai')}
+                      variant="primary"
+                      icon={Bot}
+                    >
+                      AI-Powered Setup
+                    </ActionButton>
+                    <ActionButton
+                      onClick={() => handleMethodSelect('manual')}
+                      variant="secondary"
+                      icon={FileEdit}
+                    >
+                      Manual Form
+                    </ActionButton>
+                  </div>
+                )}
+              </MessageBubble>
+            ))}
+          </div>
+          {showChatInterface && (
+            <ChatInput 
+              onSend={handleSendMessage}
+              placeholder="Reply to Spot..."
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
     </div>
   );
-}
+};
+
+export default DevSpotChatInterface;

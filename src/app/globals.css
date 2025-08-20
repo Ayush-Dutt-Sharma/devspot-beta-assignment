@@ -1,26 +1,360 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --devspot-dark: #14141a;
+  --devspot-dark-light: #1c1c22;
+  --devspot-blue-500: #3b82f6;
+  --devspot-blue-600: #2563eb;
+  --devspot-blue-400: #60a5fa;
+  --devspot-gray-600: #4b5563;
+  --devspot-gray-700: #374151;
+  --devspot-gray-800: #1f2937;
+  --devspot-text-primary: #ffffff;
+  --devspot-text-secondary: #d1d5db;
+  --devspot-text-muted: #9ca3af;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-devspot-dark: #14141a;
+  --color-devspot-dark-light: #1c1c22;
+  
+  /* DevSpot Blue Colors */
+  --color-devspot-blue-50: #eff6ff;
+  --color-devspot-blue-100: #dbeafe;
+  --color-devspot-blue-200: #bfdbfe;
+  --color-devspot-blue-300: #93c5fd;
+  --color-devspot-blue-400: #60a5fa;
+  --color-devspot-blue-500: #3b82f6;
+  --color-devspot-blue-600: #2563eb;
+  --color-devspot-blue-700: #1d4ed8;
+  --color-devspot-blue-800: #1e40af;
+  --color-devspot-blue-900: #1e3a8a;
+  
+  --color-devspot-gray-50: #f9fafb;
+  --color-devspot-gray-100: #f3f4f6;
+  --color-devspot-gray-200: #e5e7eb;
+  --color-devspot-gray-300: #d1d5db;
+  --color-devspot-gray-400: #9ca3af;
+  --color-devspot-gray-500: #6b7280;
+  --color-devspot-gray-600: #4b5563;
+  --color-devspot-gray-700: #374151;
+  --color-devspot-gray-800: #1f2937;
+  --color-devspot-gray-900: #111827;
+  
+  --color-devspot-text-primary: #ffffff;
+  --color-devspot-text-secondary: #d1d5db;
+  --color-devspot-text-muted: #9ca3af;
+
+  --color-devspot-success: #10b981;
+  --color-devspot-warning: #f59e0b;
+  --color-devspot-error: #ef4444;
+  
+  --font-devspot: 'Inter', system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  * {
+    border-color: var(--devspot-gray-700);
+  }
+  
+  body {
+    background-color: var(--devspot-dark);
+    color: var(--devspot-text-primary);
+    font-family: var(--font-devspot);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  html {
+    scroll-behavior: smooth;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .btn-primary {
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+    background-color: var(--devspot-blue-500);
+    color: white;
+    border: none;
+    cursor: pointer;
+  }
+  
+  .btn-primary:hover {
+    background-color: var(--devspot-blue-600);
+    transform: scale(1.02);
+  }
+  
+  .btn-primary:active {
+    transform: scale(0.98);
+  }
+  
+  .btn-secondary {
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+    background-color: transparent;
+    border: 1px solid var(--devspot-gray-600);
+    color: white;
+    cursor: pointer;
+  }
+  
+  .btn-secondary:hover {
+    border-color: var(--devspot-blue-500);
+    background-color: rgba(59, 130, 246, 0.1);
+    transform: scale(1.02);
+  }
+  
+  .btn-ghost {
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+    background-color: transparent;
+    color: var(--devspot-text-secondary);
+    border: none;
+    cursor: pointer;
+  }
+  
+  .btn-ghost:hover {
+    background-color: rgba(55, 65, 81, 0.5);
+    color: white;
+  }
+
+  .input-primary {
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s;
+    background-color: var(--devspot-dark-light);
+    border: 1px solid var(--devspot-gray-600);
+    color: white;
+    width: 100%;
+  }
+  
+  .input-primary::placeholder {
+    color: var(--devspot-text-muted);
+  }
+  
+  .input-primary:focus {
+    outline: none;
+    border-color: var(--devspot-blue-500);
+    box-shadow: 0 0 0 1px var(--devspot-blue-500);
+  }
+  
+  .card-primary {
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    background-color: var(--devspot-dark-light);
+    border: 1px solid var(--devspot-gray-700);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  }
+  
+  .card-hover {
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    background-color: var(--devspot-dark-light);
+    border: 1px solid var(--devspot-gray-700);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .card-hover:hover {
+    border-color: rgba(59, 130, 246, 0.5);
+    background-color: rgba(31, 41, 55, 0.3);
+    transform: translateY(-2px);
+  }
+
+  .message-bot {
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    background-color: var(--devspot-dark-light);
+    color: white;
+    max-width: 48rem;
+  }
+  
+  .message-user {
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    margin-left: auto;
+    background-color: var(--devspot-blue-500);
+    color: white;
+    max-width: 48rem;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    transition: colors 0.2s;
+    color: var(--devspot-text-secondary);
+    text-decoration: none;
+  }
+  
+  .nav-item:hover {
+    background-color: rgba(55, 65, 81, 0.5);
+    color: white;
+  }
+  
+  .nav-item-active {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    transition: colors 0.2s;
+    background-color: rgba(37, 99, 235, 0.2);
+    color: var(--devspot-blue-400);
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    text-decoration: none;
+  }
+
+  .devspot-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 16rem;
+    background-color: var(--devspot-dark-light);
+    border-right: 1px solid var(--devspot-gray-700);
+  }
+  
+  .devspot-header {
+    padding: 0.75rem 1.5rem;
+    background-color: var(--devspot-dark-light);
+    border-bottom: 1px solid var(--devspot-gray-700);
+  }
+  
+  .devspot-main {
+    background-color: var(--devspot-dark);
+    color: var(--devspot-text-primary);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--devspot-gray-600) transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--devspot-gray-600);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--devspot-gray-500);
+  }
+}
+
+@layer utilities {
+  .bg-devspot-dark {
+    background-color: var(--devspot-dark);
+  }
+  
+  .bg-devspot-dark-light {
+    background-color: var(--devspot-dark-light);
+  }
+  
+  .bg-devspot-blue-500 {
+    background-color: var(--devspot-blue-500);
+  }
+  
+  .bg-devspot-blue-600 {
+    background-color: var(--devspot-blue-600);
+  }
+  
+  .text-devspot-primary {
+    color: var(--devspot-text-primary);
+  }
+  
+  .text-devspot-secondary {
+    color: var(--devspot-text-secondary);
+  }
+  
+  .text-devspot-muted {
+    color: var(--devspot-text-muted);
+  }
+  
+  .text-devspot-blue-400 {
+    color: var(--devspot-blue-400);
+  }
+  
+  .border-devspot-gray-600 {
+    border-color: var(--devspot-gray-600);
+  }
+  
+  .border-devspot-gray-700 {
+    border-color: var(--devspot-gray-700);
+  }
+  
+  .border-devspot-blue-500 {
+    border-color: var(--devspot-blue-500);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+  
+  .animate-typing {
+    animation: typing 1.5s infinite;
+  }
+  
+  .hover-scale {
+    transition: transform 0.2s ease-in-out;
+  }
+  
+  .hover-scale:hover {
+    transform: scale(1.05);
+  }
+  
+  .hover-scale:active {
+    transform: scale(0.95);
+  }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes slideUp {
+  0% { 
+    transform: translateY(10px); 
+    opacity: 0; 
+  }
+  100% { 
+    transform: translateY(0); 
+    opacity: 1; 
+  }
+}
+
+@keyframes typing {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--devspot-blue-500), 0 0 0 4px var(--devspot-dark);
+}
+
+::selection {
+  background-color: var(--devspot-blue-500);
+  color: white;
 }
