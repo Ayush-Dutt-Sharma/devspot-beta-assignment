@@ -7,6 +7,9 @@ import ChatInput from '@/components/chat/ChatInput';
 import ActionButton from '@/components/ui/ActionButton';
 import ModeCard from '@/components/ui/ModelCard';
 import { Zap, User, Compass, Bot, FileEdit } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useUser, SignInButton } from '@clerk/nextjs';
+
 
 type Mode = 'hackathon' | 'profile' | 'explore' | null;
 type Method = 'ai' | 'manual' | null;
@@ -25,6 +28,8 @@ const DevSpotChatInterface = () => {
       content: 'Welcome to DevSpot! I can help you create your technology profile, host a hackathon, and more. What can I do for you?'
     }
   ]);
+const router = useRouter();
+const { isLoaded, user } = useUser();
 
   const handleModeSelect = (mode:Mode ) => {
     setSelectedMode(mode);
@@ -50,25 +55,47 @@ const DevSpotChatInterface = () => {
     setMessages(prev => [...prev, newUserMessage, newBotMessage]);
   };
 
-  const handleMethodSelect = (method:Method) => {
-    setSelectedMethod(method);
-    
-    const newUserMessage: Message = {
-      id: Date.now(),
-      sender: 'user' as 'user',
-      content: method === 'ai' ? 'AI-Powered Setup' : 'Manual Form'
-    };
+const handleMethodSelect = async (method: Method) => {
+  setSelectedMethod(method);
+  
+  const newUserMessage: Message = {
+    id: Date.now(),
+    sender: 'user' as 'user',
+    content: method === 'ai' ? 'AI-Powered Setup' : 'Manual Form'
+  };
 
+  setMessages(prev => [...prev, newUserMessage]);
+
+  if (method === 'manual') {
+    // Create conversation record and redirect to manual form
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_step: 'manual_form_start',
+          conversation_data: {},
+          method: 'manual'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        router.push(`/manual-form/${data.conversation.id}`);
+      }
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+    }
+  } else {
+    // AI mode - continue in chat
     const newBotMessage: Message = {
       id: Date.now() + 1,
       sender: 'bot' as 'bot',
-      content: method === 'ai' 
-        ? "Excellent choice! I'll guide you through creating your hackathon step by step. Let's start with the basics - what would you like to call your hackathon?"
-        : "Great! I'll redirect you to our form interface where you can fill out all the details manually. This gives you full control over every aspect of your hackathon setup."
+      content: "Perfect! I'll guide you through creating your hackathon step by step. Let's start with the basics - what would you like to call your hackathon?"
     };
-
-    setMessages(prev => [...prev, newUserMessage, newBotMessage]);
-  };
+    setMessages(prev => [...prev, newBotMessage]);
+  }
+};
 
   const handleSendMessage = (message: string) => {
     const newUserMessage: Message = {
@@ -94,6 +121,32 @@ const DevSpotChatInterface = () => {
   const showChatInterface = selectedMode === 'explore' || 
                            (selectedMode === 'hackathon' && selectedMethod === 'ai') ||
                            (selectedMode === 'profile');
+                           
+  if (isLoaded && !user) {
+  return (
+    <div className="h-screen bg-devspot-dark text-white flex flex-col">
+      <Header onSearch={(query) => console.log('Search:', query)} />
+      
+      <div className="flex-1 flex">
+        <Sidebar activeItem="Chat with Spot" />
+        
+        <div className="flex-1 flex items-center justify-center">
+          <div className="card-primary max-w-md text-center">
+            <h2 className="text-2xl font-bold text-white mb-4">Sign In Required</h2>
+            <p className="text-devspot-text-secondary mb-6">
+              Please sign in to create hackathons and access all DevSpot features.
+            </p>
+            <SignInButton mode="modal">
+              <button className="btn-primary w-full">
+                Sign In to Continue
+              </button>
+            </SignInButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="h-screen bg-devspot-dark text-white flex flex-col">

@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
+import { useUser, UserButton } from '@clerk/nextjs';
 import { Search, Bell, ChevronDown } from 'lucide-react';
 
 interface HeaderProps {
   onSearch?: (query: string) => void;
-  user?: { name?: string } | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ onSearch, user = null }) => {
+const Header: React.FC<HeaderProps> = ({ onSearch }) => {
   const [searchValue, setSearchValue] = useState('');
+  const { user, isLoaded } = useUser();
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchValue(e.target.value);
@@ -54,14 +55,21 @@ const Header: React.FC<HeaderProps> = ({ onSearch, user = null }) => {
             <Bell size={18} />
           </button>
           
-          <div className="flex items-center gap-2 cursor-pointer hover:bg-devspot-gray-700/50 rounded-lg p-2 transition-colors">
+          {isLoaded && user ? (
+            <UserButton 
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8",
+                  userButtonPopoverCard: "bg-devspot-dark-light border border-devspot-gray-600",
+                  userButtonPopoverActionButton: "text-white hover:bg-devspot-gray-700"
+                }
+              }}
+            />
+          ) : (
             <div className="w-8 h-8 bg-devspot-gray-600 rounded-full flex items-center justify-center">
-              <span className="text-sm font-medium text-white">
-                {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-              </span>
+              <span className="text-sm font-medium text-white">U</span>
             </div>
-            <ChevronDown size={16} className="text-devspot-text-muted" />
-          </div>
+          )}
         </div>
       </div>
     </header>
