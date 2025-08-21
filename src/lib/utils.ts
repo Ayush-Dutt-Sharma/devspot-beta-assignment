@@ -80,3 +80,122 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false
   }
 }
+
+export interface ConversationStep {
+  step: string
+  data: Record<string, any>
+  completed: boolean
+  timestamp: string
+}
+
+export interface HackathonDraftData {
+  title?: string
+  organization?: string
+  registration_date?: string
+  hacking_start?: string
+  submission_deadline?: string
+  format?: 'virtual' | 'in_person' | 'hybrid'
+  target_audience?: string
+  event_size?: number
+  total_budget?: number
+  challenges?: Array<{
+    title: string
+    description: string
+    judging_criteria: string[]
+    resources: string[]
+    prize_amount: number
+  }>
+  current_challenge_index?: number
+}
+
+export function mergeConversationData(
+  existing: HackathonDraftData,
+  newData: Partial<HackathonDraftData>
+): HackathonDraftData {
+  return {
+    ...existing,
+    ...newData,
+    challenges: newData.challenges || existing.challenges || []
+  }
+}
+
+export function getConversationProgress(data: HackathonDraftData): {
+  completed: number
+  total: number
+  percentage: number
+} {
+  const requiredFields = [
+    'title',
+    'registration_date',
+    'hacking_start', 
+    'submission_deadline'
+  ]
+  
+  const completed = requiredFields.filter(field => data[field as keyof HackathonDraftData]).length
+  const hasChallenges = (data.challenges?.length || 0) >= 1
+  const challengesComplete = data.challenges?.every(c => c.title && c.description) || false
+  
+  const totalSteps = requiredFields.length + 1 // +1 for challenges
+  const completedSteps = completed + (hasChallenges && challengesComplete ? 1 : 0)
+  
+  return {
+    completed: completedSteps,
+    total: totalSteps,
+    percentage: Math.round((completedSteps / totalSteps) * 100)
+  }
+}
+
+interface PrizeRecommendation {
+  structure: 'even_split' | 'overall_winners' | 'hybrid'
+  breakdown: string
+  rationale: string
+  distribution: { [key: string]: number }
+}
+
+export function recommendPrizeStructure(
+  totalAmount: number,
+  challengeCount: number,
+  additionalAmount: number = 0
+): PrizeRecommendation {
+  const baseAmount = 20000 // $20k minimum
+  const total = baseAmount + additionalAmount
+
+  if (additionalAmount === 0) {
+    // Only minimum bounty
+    if (challengeCount <= 2) {
+      const perChallenge = baseAmount / challengeCount
+      return {
+        structure: 'even_split',
+        breakdown: `${perChallenge.toLocaleString()} per challenge`,
+        rationale: 'Even distribution works well with fewer challenges',
+        distribution: {
+          [`Challenge 1`]: perChallenge,
+          [`Challenge 2`]: challengeCount > 1 ? perChallenge : 0
+        }
+      }
+    } else {
+      return {
+        structure: 'overall_winners',
+        breakdown: '1st: $10,000, 2nd: $6,000, 3rd: $4,000',
+        rationale: 'Overall competition creates stronger engagement with multiple challenges',
+        distribution: {
+          '1st Place': 10000,
+          '2nd Place': 6000,
+          '3rd Place': 4000
+        }
+      }
+    }
+  } else {
+    // Additional funding provided
+    const challengePrize = additionalAmount / challengeCount
+    return {
+      structure: 'hybrid',
+      breakdown: `Overall winners: ${baseAmount.toLocaleString()} + Per-challenge: ${challengePrize.toLocaleString()}`,
+      rationale: 'Hybrid structure rewards both overall excellence and challenge-specific innovation',
+      distribution: {
+        'Overall Pool': baseAmount,
+        [`Per Challenge (${challengeCount})`]: challengePrize
+      }
+    }
+  }
+}
