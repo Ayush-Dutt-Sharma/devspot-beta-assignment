@@ -100,3 +100,16 @@ export const SAMPLE_BOUNTIES = [
     resources: ["https://glitter.xyz/docs"]
   }
 ] as const;
+export const HACKATHON_STEPS = [
+  'title + organization',
+  'registration_date + hacking_start + submission_deadline',
+  'total_budget (DEFAULT 20k minimum)',
+  'How many challenges would you like to create?']
+
+export const CHALLENGE_CREATION_STEPS = [
+  'title',
+  'prizes',
+  'sponsor',
+  'judging criteria',
+  'resources'
+]

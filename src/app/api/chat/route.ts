@@ -1,250 +1,221 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { ChatOpenAI } from '@langchain/openai';
-import { ConversationChain } from 'langchain/chains';
-import { PromptTemplate } from '@langchain/core/prompts';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { auth } from '@clerk/nextjs/server';
-import { 
-  SupabaseConversationMemory, 
-  CONVERSATION_CONTEXTS, 
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { auth } from "@clerk/nextjs/server";
+import {
   getConversationProgress,
-  validateConversationData 
-} from '@/lib/conversation-memory';
-import { 
-  SmartDataExtractor, 
+  validateConversationData,
+} from "@/lib/conversation-memory";
+import {
   getNextQuestions,
   HackathonDataSchema,
-  ProfileDataSchema 
-} from '@/lib/data-extraction-utils';
-
-const llm = new ChatOpenAI({
-  modelName: 'gpt-4',
-  temperature: 0.7,
-  openAIApiKey: process.env.OPENAI_API_KEY,
-});
-
-
-
-const SYSTEM_PROMPTS = {
-  hackathon: `You are Spot, DevSpot's AI assistant helping Technology Owners create hackathons. You are enthusiastic, professional, and knowledgeable about hackathon best practices.
-
-Key requirements for hackathons:
-- Minimum $20,000 USDC total bounty required
-- Must have clear challenges and judging criteria
-- Proper timeline with registration, hacking, and submission phases
-
-Always be encouraging and guide users step by step. Ask one question at a time and extract specific information based on the current step.`,
-
-  profile: `You are Spot, DevSpot's AI assistant helping developers build their technology profiles. You are supportive and help showcase their skills and experience effectively.
-
-Focus on gathering:
-- Programming languages and frameworks
-- Project experience and achievements  
-- Areas of expertise and interests
-- GitHub/portfolio links`,
-
-  explore: `You are Spot, DevSpot's AI assistant. You help users understand the platform, discover hackathons, and learn about opportunities.
-
-You can provide information about:
-- How DevSpot works
-- Current and upcoming hackathons
-- Platform features and benefits
-- How to get started as a participant or organizer`
-};
-
-
-
-
-
-async function generatePrompt(mode: string, conversationData: any, message: string): Promise<string> {
-  const context = CONVERSATION_CONTEXTS[mode as keyof typeof CONVERSATION_CONTEXTS];
-  const systemPrompt = SYSTEM_PROMPTS[mode as keyof typeof SYSTEM_PROMPTS];
-  
-  const progress = getConversationProgress(conversationData, mode);
-  const validation = validateConversationData(conversationData, mode);
-  
-  let contextInfo = "";
-  if (Object.keys(conversationData).length > 0) {
-    contextInfo = `\n\nProgress: ${progress.completionPercentage}% complete
-Current data collected: ${JSON.stringify(conversationData, null, 2)}
-Next to collect: ${progress.currentStep}`;
-  }
-  
-  let validationInfo = "";
-  if (validation.errors.length > 0) {
-    validationInfo = `\n\nValidation errors to address: ${validation.errors.join(', ')}`;
-  }
-  if (validation.warnings.length > 0) {
-    validationInfo += `\nWarnings: ${validation.warnings.join(', ')}`;
-  }
-  
-  return `${systemPrompt}
-
-${context?.systemContext || ''}
-
-Current focus: ${progress.currentStep}
-${contextInfo}
-${validationInfo}
-
-User message: "${message}"
-
-Respond naturally and guide the user toward completing the missing information. Be encouraging and specific about what you need next.`;
-}
+} from "@/lib/data-extraction-utils";
+import InstanceCache from "@/lib/InstanceCache";
+import { generatePrompt } from "@/lib/prompts";
+import { HACKATHON_STEPS } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { message, conversationId, mode } = await request.json();
-    
+
     if (!message || !mode) {
-      return NextResponse.json({ error: 'Message and mode are required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Message and mode are required" },
+        { status: 400 }
+      );
     }
 
-    const supabase = await createAdminClient();
     let conversation;
     let hackathonData;
-
+    const supabase = await createAdminClient();
     if (conversationId) {
+      // Get existing conversation
       const { data } = await supabase
-        .from('conversations')
-        .select('*, hackathons(*)')
-        .eq('id', conversationId)
+        .from("conversations")
+        .select("*, hackathons(*)")
+        .eq("id", conversationId)
         .single();
       conversation = data;
       hackathonData = data?.hackathons;
-    } else if (mode === 'hackathon') {
-      const { data: newHackathon } = await supabase
-        .from('hackathons')
+    } else if (mode === "hackathon") {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("id")
+        .eq("clerk_id", userId)
+        .single();
+
+      if (!userData) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+
+      const { data: newHackathon, error: hackathonError } = await supabase
+        .from("hackathons")
         .insert({
-          title: 'Untitled Hackathon',
-          status: 'draft',
-          creator_id: userId
+          title: "Untitled Hackathon",
+          status: "draft",
+          creator_id: userData.id,
+          event_size: 100,
+          target_audience: "Developers",
+          format: "virtual", 
         })
         .select()
         .single();
 
-      const { data: newConversation } = await supabase
-        .from('conversations')
+      if (hackathonError) throw hackathonError;
+      const { data: newConversation, error: conversationError } = await supabase
+        .from("conversations")
         .insert({
-          user_id: userId,
-          hackathon_id: newHackathon?.id,
-          current_step: 'hackathon_start',
+          user_id: userData.id,
+          hackathon_id: newHackathon.id,
+          current_step: "title + organization",
           conversation_data: {},
-          method: 'ai'
+          method: "ai",
         })
         .select()
         .single();
+
+      if (conversationError) throw conversationError;
+      // Create new hackathon and conversation
 
       conversation = newConversation;
       hackathonData = newHackathon;
-    } else {
-      const { data: newConversation } = await supabase
-        .from('conversations')
-        .insert({
-          user_id: userId,
-          current_step: `${mode}_start`,
-          conversation_data: {},
-          method: 'ai'
-        })
-        .select()
-        .single();
-
-      conversation = newConversation;
     }
 
     if (!conversation) {
-      return NextResponse.json({ error: 'Failed to create/find conversation' }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to create/find conversation" },
+        { status: 500 }
+      );
     }
 
+    // Use cached memory instance and load existing data
+    const memory = await InstanceCache.getConversationMemory(conversation.id);
     const conversationData = conversation.conversation_data || {};
-    
-    const memory = new SupabaseConversationMemory(conversation.id);
-    await memory.loadMemoryFromDatabase();
-    await memory.saveMessage('user', message);
-    
-    const extractor = new SmartDataExtractor();
+    const currentStep = conversation.current_step || "title + organization";
+    // Save user message to memory
+    await memory.saveMessage("user", message);
+
+    // Extract data from the message
+    const extractor = InstanceCache.getExtractor();
     let extractedData: any = {};
-    
-    if (mode === 'hackathon') {
-      extractedData = await extractor.extractHackathonData(message, conversationData);
-    } else if (mode === 'profile') {
-      extractedData = await extractor.extractProfileData(message, conversationData);
+
+    if (mode === "hackathon") {
+      extractedData = await extractor.extractHackathonData(
+        message,
+        conversationData,
+        hackathonData,
+        currentStep
+      );
     }
-    
+
     const updatedData = { ...conversationData, ...extractedData };
 
-    const promptText = await generatePrompt(mode, updatedData, message);
-    
-    const prompt = PromptTemplate.fromTemplate(promptText);
-    const chain = new ConversationChain({
-      llm,
-      memory,
-      prompt
-    });
+    // Save the updated conversation data to memory
+    // if (Object.keys(extractedData).length > 0) {
+    //   await memory.saveConversationData(extractedData);
+    // }
 
-    const response = await chain.call({ input: message });
-    
-    await memory.saveMessage('ai', response.response);
-    
-    const progress = getConversationProgress(updatedData, mode);
-    const validation = validateConversationData(updatedData, mode);
-    const nextQuestions = getNextQuestions(
-      updatedData, 
-      mode === 'hackathon' ? HackathonDataSchema : ProfileDataSchema, 
-      mode
-    );
-    
-    await supabase
-      .from('conversations')
-      .update({
-        current_step: progress.currentStep,
-        conversation_data: updatedData,
-        last_updated: new Date().toISOString()
-      })
-      .eq('id', conversation.id);
+    // Generate AI prompt and response
+    // const promptText = await generatePrompt(mode, updatedData, message);
+    // const llm = InstanceCache.getLLM();
+    // const response = await llm.invoke(promptText);
 
-    if (hackathonData && Object.keys(extractedData).length > 0) {
+    // Save AI response to memory
+    //@ts-ignore
+    await memory.saveMessage("ai", extractedData);
+
+    // Calculate progress and validation
+    // const progress = getConversationProgress(updatedData, mode);
+    // const validation = validateConversationData(updatedData, mode);
+    // const nextQuestions = getNextQuestions(
+    //   updatedData,
+    //   HackathonDataSchema,
+    //   mode
+    // );
+
+    if (extractedData && Object.keys(extractedData).length > 0) {
+      const {
+        hackathon_data,
+        shouldGoToNextStep,
+        newInformationOrUpdate,
+        clarificationQuestion,
+        nextInformationQuestion,
+        reasonForNextStepDecision,
+        isComplete,
+        nextPlannedStep,
+      } = extractedData;
+      const {
+        title,
+        organization,
+        registration_date,
+        hacking_start,
+        submission_deadline,
+        total_budget,
+      } = hackathon_data || {};
+
+      // // Update current step in memory (this also updates the database)
+      await memory.updateCurrentStep(currentStep);
+
+      // Update hackathon table if this is a hackathon conversation and we have extracted data
       const hackathonUpdates: any = {};
-      
-      if (extractedData.title) hackathonUpdates.title = extractedData.title;
-      if (extractedData.organization) hackathonUpdates.organization = extractedData.organization;
-      if (extractedData.format) hackathonUpdates.format = extractedData.format;
-      if (extractedData.event_size) hackathonUpdates.event_size = extractedData.event_size;
-      if (extractedData.total_budget) {
-        hackathonUpdates.total_budget = extractedData.total_budget;
-        hackathonUpdates.budget_currency = 'USD';
+
+      // Map conversation data to hackathon fields
+      if (title) hackathonUpdates.title = title;
+      if (organization) hackathonUpdates.organization = organization;
+      if (registration_date)
+        hackathonUpdates.registration_date = registration_date;
+      if (hacking_start) hackathonUpdates.hacking_start = hacking_start;
+      if (submission_deadline)
+        hackathonUpdates.submission_deadline = submission_deadline;
+      if (total_budget) {
+        hackathonUpdates.total_budget = total_budget;
+        hackathonUpdates.budget_currency = "USDC";
       }
 
+      // Only update if we have changes
       if (Object.keys(hackathonUpdates).length > 0) {
+        hackathonUpdates.updated_at = new Date().toISOString();
+
         await supabase
-          .from('hackathons')
+          .from("hackathons")
           .update(hackathonUpdates)
-          .eq('id', hackathonData.id);
+          .eq("id", hackathonData.id);
       }
+
+      if (shouldGoToNextStep) {
+        return NextResponse.json({
+          response: nextInformationQuestion,
+          conversationId: conversation.id,
+          currentStep: currentStep,
+          nextSteps: nextPlannedStep,
+          extractedData,
+          conversationData: updatedData,
+        });
+      } else if (clarificationQuestion) {
+        // // Return comprehensive response
+        return NextResponse.json({
+          response: clarificationQuestion,
+          conversationId: conversation.id,
+          currentStep: currentStep,
+          nextSteps: currentStep,
+          extractedData,
+          conversationData: updatedData,
+        });
+      }
+    } else {
+      return NextResponse.json(
+        { error: "Failed to extract data from the message" },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json({
-      response: response.response,
-      conversationId: conversation.id,
-      progress: progress.completionPercentage,
-      currentStep: progress.currentStep,
-      extractedData,
-      nextQuestions,
-      validation: {
-        isValid: validation.isValid,
-        errors: validation.errors,
-        warnings: validation.warnings
-      }
-    });
-
   } catch (error) {
-    console.error('Chat API error:', error);
+    console.error("Chat API error:", error);
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

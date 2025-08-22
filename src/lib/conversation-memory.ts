@@ -4,19 +4,22 @@ import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export interface ConversationMessage {
-  id: string;
-  conversation_id: string;
   sender: 'user' | 'ai';
   content: string;
   metadata?: any;
-  created_at: string;
+  timestamp: string;
+}
+
+export interface ConversationData {
+  messages?: ConversationMessage[];
+  [key: string]: any;
 }
 
 export class SupabaseConversationMemory extends BufferMemory {
   private conversationId: string;
   private supabase: any;
 
-  constructor(conversationId: string){
+  constructor(conversationId: string) {
     super({
       returnMessages: true,
       memoryKey: 'history'
@@ -27,13 +30,15 @@ export class SupabaseConversationMemory extends BufferMemory {
 
   async loadMemoryFromDatabase(): Promise<void> {
     try {
-      const { data: messages } = await this.supabase
-        .from('conversation_messages')
-        .select('*')
-        .eq('conversation_id', this.conversationId)
-        .order('created_at', { ascending: true });
+      const { data: conversation } = await this.supabase
+        .from('conversations')
+        .select('conversation_data')
+        .eq('id', this.conversationId)
+        .single();
 
-      if (messages && messages.length > 0) {
+      if (conversation?.conversation_data?.messages) {
+        const messages: ConversationMessage[] = conversation.conversation_data.messages;
+        
         const langchainMessages: BaseMessage[] = messages.map((msg: ConversationMessage) => {
           return msg.sender === 'user' 
             ? new HumanMessage(msg.content)
@@ -50,40 +55,137 @@ export class SupabaseConversationMemory extends BufferMemory {
 
   async saveMessage(sender: 'user' | 'ai', content: string, metadata?: any): Promise<void> {
     try {
+      const { data: conversation } = await this.supabase
+        .from('conversations')
+        .select('conversation_data')
+        .eq('id', this.conversationId)
+        .single();
+
+      const currentData: ConversationData = conversation?.conversation_data || {};
+      const messages: ConversationMessage[] = currentData.messages || [];
+
+      const newMessage: ConversationMessage = {
+        sender,
+        content,
+        metadata: metadata || {},
+        timestamp: new Date().toISOString()
+      };
+
+      messages.push(newMessage);
+
+      const updatedData: ConversationData = {
+        ...currentData,
+        messages
+      };
+
       await this.supabase
-        .from('conversation_messages')
-        .insert({
-          conversation_id: this.conversationId,
-          sender,
-          content,
-          metadata: metadata || {}
-        });
+        .from('conversations')
+        .update({
+          conversation_data: updatedData,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', this.conversationId);
+
     } catch (error) {
       console.error('Error saving message:', error);
     }
   }
 
-  async clearMemory(): Promise<void> {
+  async saveConversationData(data: Record<string, any>): Promise<void> {
+    try {
+      const { data: conversation } = await this.supabase
+        .from('conversations')
+        .select('conversation_data')
+        .eq('id', this.conversationId)
+        .single();
+
+      const currentData: ConversationData = conversation?.conversation_data || {};
+
+      const updatedData: ConversationData = {
+        ...currentData,
+        ...data,
+        messages: currentData.messages || []
+      };
+
+      await this.supabase
+        .from('conversations')
+        .update({
+          conversation_data: updatedData,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', this.conversationId);
+
+    } catch (error) {
+      console.error('Error saving conversation data:', error);
+    }
+  }
+
+  async getConversationData(): Promise<ConversationData> {
+    try {
+      const { data: conversation } = await this.supabase
+        .from('conversations')
+        .select('conversation_data')
+        .eq('id', this.conversationId)
+        .single();
+
+      return conversation?.conversation_data || {};
+    } catch (error) {
+      console.error('Error getting conversation data:', error);
+      return {};
+    }
+  }
+
+  async updateCurrentStep(step: string): Promise<void> {
     try {
       await this.supabase
-        .from('conversation_messages')
-        .delete()
-        .eq('conversation_id', this.conversationId);
+        .from('conversations')
+        .update({
+          current_step: step,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', this.conversationId);
+    } catch (error) {
+      console.error('Error updating current step:', error);
+    }
+  }
+
+  async clearMemory(): Promise<void> {
+    try {
+      const { data: conversation } = await this.supabase
+        .from('conversations')
+        .select('conversation_data')
+        .eq('id', this.conversationId)
+        .single();
+
+      const currentData: ConversationData = conversation?.conversation_data || {};
+      const updatedData: ConversationData = {
+        ...currentData,
+        messages: []
+      };
+
+      await this.supabase
+        .from('conversations')
+        .update({
+          conversation_data: updatedData,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', this.conversationId);
       
       this.clear();
     } catch (error) {
       console.error('Error clearing memory:', error);
     }
   }
-}
 
-export async function createConversationTable() {
-  const supabase = await createAdminClient();
-  
-  const { error } = await supabase.rpc('create_conversation_messages_table');
-  
-  if (error) {
-    console.error('Error creating conversation_messages table:', error);
+  async deleteConversation(): Promise<void> {
+    try {
+      await this.supabase
+        .from('conversations')
+        .delete()
+        .eq('id', this.conversationId);
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+    }
   }
 }
 
@@ -130,39 +232,6 @@ export const CONVERSATION_CONTEXTS: Record<string, ConversationContext> = {
     }
   },
   
-  profile: {
-    systemContext: `You are helping build a developer profile. Collect:
-    - Personal information (name, role, experience level)
-    - Technical skills (languages, frameworks, tools)
-    - Project experience and achievements
-    - Portfolio links and social profiles
-    - Areas of interest and expertise`,
-    
-    requiredFields: [
-      'name',
-      'role',
-      'experience_level',
-      'programming_languages',
-      'frameworks',
-      'github_url'
-    ]
-  },
-  
-  explore: {
-    systemContext: `You are providing information about DevSpot platform:
-    - Platform features and capabilities
-    - How to participate in hackathons
-    - How to organize events
-    - Community guidelines and best practices
-    - Success stories and case studies`,
-    
-    knowledgeBase: {
-      'platform_features': 'DevSpot enables Technology Owners to host hackathons and developers to participate in innovation challenges.',
-      'participation': 'Developers can browse hackathons, join teams, submit projects, and compete for prizes.',
-      'organizing': 'Technology Owners can create hackathons with custom challenges, set bounties, and manage participants.',
-      'minimum_bounty': 'All hackathons must have a minimum total bounty of $20,000 USDC to ensure quality and participation.'
-    }
-  }
 };
 
 export function getConversationProgress(conversationData: any, mode: string): {

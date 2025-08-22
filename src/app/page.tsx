@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import MessageBubble from '@/components/chat/MessageBubble';
@@ -18,6 +18,8 @@ type Message = {
 const DevSpotChatInterface = () => {
   const [selectedMode, setSelectedMode] = useState<Mode>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -25,10 +27,21 @@ const DevSpotChatInterface = () => {
       content: 'Welcome to DevSpot! I can help you create your technology profile, host a hackathon, and more. What can I do for you?'
     }
   ]);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isLoaded, user } = useUser();
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleModeSelect = async (mode: Mode) => {
     setSelectedMode(mode);
+    setIsLoading(true);
     
     const newUserMessage: Message = {
       id: Date.now(),
@@ -40,8 +53,8 @@ const DevSpotChatInterface = () => {
 
     setMessages(prev => [...prev, newUserMessage]);
 
-    if (mode === 'hackathon') {
-      try {
+    try {
+      if (mode === 'hackathon') {
         const response = await fetch('/api/conversations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -56,25 +69,29 @@ const DevSpotChatInterface = () => {
           const data = await response.json();
           setConversationId(data.conversation.id);
         }
-      } catch (error) {
-        console.error('Error creating conversation:', error);
       }
+
+      const newBotMessage: Message = {
+        id: Date.now() + 1,
+        sender: 'bot',
+        content: mode === 'hackathon' 
+          ? "Perfect! I'll help you create an amazing hackathon. Let's start with the basics - what would you like to call your hackathon?"
+          : mode === 'profile'
+          ? "Perfect! Let's build your technology profile. I'll guide you through the process step by step."
+          : "Perfect! I'm here to help you explore DevSpot. You can ask me about hackathons, how to participate, platform features, or anything else you'd like to know!"
+      };
+
+      setMessages(prev => [...prev, newBotMessage]);
+    } catch (error) {
+      console.error('Error selecting mode:', error);
+    } finally {
+      setIsLoading(false);
     }
-
-    const newBotMessage: Message = {
-      id: Date.now() + 1,
-      sender: 'bot',
-      content: mode === 'hackathon' 
-        ? "Perfect! I'll help you create an amazing hackathon. Let's start with the basics - what would you like to call your hackathon?"
-        : mode === 'profile'
-        ? "Perfect! Let's build your technology profile. I'll guide you through the process step by step."
-        : "Perfect! I'm here to help you explore DevSpot. You can ask me about hackathons, how to participate, platform features, or anything else you'd like to know!"
-    };
-
-    setMessages(prev => [...prev, newBotMessage]);
   };
 
   const handleSendMessage = async (message: string) => {
+    if (isLoading) return;
+       setSelectedMode('hackathon');
     const newUserMessage: Message = {
       id: Date.now(),
       sender: 'user',
@@ -82,6 +99,7 @@ const DevSpotChatInterface = () => {
     };
     
     setMessages(prev => [...prev, newUserMessage]);
+    setIsLoading(true);
 
     try {
       const response = await fetch('/api/chat', {
@@ -90,31 +108,43 @@ const DevSpotChatInterface = () => {
         body: JSON.stringify({
           message,
           conversationId,
-          mode: selectedMode
+          mode: 'hackathon'
         })
       });
 
       if (response.ok) {
         const data = await response.json();
-        const botResponse: Message = {
+        
+        const newBotMessage: Message = {
           id: Date.now() + 1,
           sender: 'bot',
           content: data.response
         };
-        setMessages(prev => [...prev, botResponse]);
+        
+        setMessages(prev => [...prev, newBotMessage]);
 
         if (data.conversationId && !conversationId) {
           setConversationId(data.conversationId);
         }
+
+        console.log('Conversation progress:', data.progress);
+        console.log('Extracted data:', data.extractedData);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorResponse: Message = {
+      
+      const errorMessage: Message = {
         id: Date.now() + 1,
         sender: 'bot',
         content: "I'm sorry, I encountered an error. Please try again."
       };
-      setMessages(prev => [...prev, errorResponse]);
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -146,6 +176,7 @@ const DevSpotChatInterface = () => {
     );
   }
 
+  
   return (
     <div className="h-screen bg-devspot-dark text-white flex flex-col">
       <Header onSearch={(query) => console.log('Search:', query)} />
@@ -167,18 +198,32 @@ const DevSpotChatInterface = () => {
                       icon={Zap}
                       title="Help me create a hackathon"
                       description="Get AI assistance to design your perfect hackathon event"
-                      onClick={() => handleModeSelect('hackathon')}
+                      onClick={() => handleSendMessage('Start creating the hackathon')}
                     />
-                  
                   </div>
                 )}
+                
               </MessageBubble>
             ))}
+            
+            <div ref={messagesEndRef} />
+             {isLoading && (
+                  <div className="flex items-center gap-2 mt-2 text-devspot-text-secondary">
+                    <div className="flex space-x-1">
+                      <div className="w-1.5 h-1.5 bg-devspot-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                      <div className="w-1.5 h-1.5 bg-devspot-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-1.5 h-1.5 bg-devspot-blue-500 rounded-full animate-bounce"></div>
+                    </div>
+                    <span className="text-sm">Spot is thinking...</span>
+                  </div>
+                )}
           </div>
           
           <ChatInput 
             onSend={handleSendMessage}
             placeholder="Reply to Spot..."
+            disabled={isLoading}
+            isLoading={isLoading}
           />
         </div>
       </div>

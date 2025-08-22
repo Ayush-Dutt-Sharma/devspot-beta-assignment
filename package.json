@@ -11,6 +11,7 @@
   "dependencies": {
     "@clerk/nextjs": "^6.31.3",
     "@clerk/types": "^4.80.0",
+    "@langchain/google-genai": "^0.2.16",
     "@langchain/openai": "^0.6.9",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
