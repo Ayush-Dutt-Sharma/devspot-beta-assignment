@@ -11,6 +11,7 @@
   "dependencies": {
     "@clerk/nextjs": "^6.31.3",
     "@clerk/types": "^4.80.0",
+    "@langchain/core": "^0.3.72",
     "@langchain/google-genai": "^0.2.16",
     "@langchain/openai": "^0.6.9",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -27,8 +28,11 @@
     "postcss": "^8.5.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "replicate": "^1.1.0",
     "svix": "^1.74.1",
     "tailwind-merge": "^3.3.1",
+    "x402-axios": "^0.5.1",
+    "x402-next": "^0.5.3",
     "zod": "^3.25.76",
     "zustand": "^5.0.8"
   },

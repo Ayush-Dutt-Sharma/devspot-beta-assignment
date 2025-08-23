@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
     let hackathonData;
     const supabase = await createAdminClient();
     if (conversationId) {
-      // Get existing conversation
       const { data } = await supabase
         .from("conversations")
         .select("*, hackathons(*)")
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (conversationError) throw conversationError;
-      // Create new hackathon and conversation
 
       conversation = newConversation;
       hackathonData = newHackathon;
@@ -92,14 +90,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use cached memory instance and load existing data
     const memory = await InstanceCache.getConversationMemory(conversation.id);
     const conversationData = conversation.conversation_data || {};
     const currentStep = conversation.current_step || "title + organization";
     // Save user message to memory
     await memory.saveMessage("user", message);
-
-    // Extract data from the message
     const extractor = InstanceCache.getExtractor();
     let extractedData: any = {};
 
@@ -113,29 +108,9 @@ export async function POST(request: NextRequest) {
     }
 
     const updatedData = { ...conversationData, ...extractedData };
-
-    // Save the updated conversation data to memory
-    // if (Object.keys(extractedData).length > 0) {
-    //   await memory.saveConversationData(extractedData);
-    // }
-
-    // Generate AI prompt and response
-    // const promptText = await generatePrompt(mode, updatedData, message);
-    // const llm = InstanceCache.getLLM();
-    // const response = await llm.invoke(promptText);
-
-    // Save AI response to memory
     //@ts-ignore
     await memory.saveMessage("ai", extractedData);
 
-    // Calculate progress and validation
-    // const progress = getConversationProgress(updatedData, mode);
-    // const validation = validateConversationData(updatedData, mode);
-    // const nextQuestions = getNextQuestions(
-    //   updatedData,
-    //   HackathonDataSchema,
-    //   mode
-    // );
 
     if (extractedData && Object.keys(extractedData).length > 0) {
       const {
@@ -147,6 +122,13 @@ export async function POST(request: NextRequest) {
         reasonForNextStepDecision,
         isComplete,
         nextPlannedStep,
+        isHackathonDataComplete,
+        isAllChallengesDataComplete,
+        currentChallengeData,
+        isHackathonStep,
+        isChallengeStep,
+        currentChallengeIndex,
+        isPaymentRequired
       } = extractedData;
       const {
         title,
@@ -157,10 +139,10 @@ export async function POST(request: NextRequest) {
         total_budget,
       } = hackathon_data || {};
 
-      // // Update current step in memory (this also updates the database)
+
       await memory.updateCurrentStep(currentStep);
 
-      // Update hackathon table if this is a hackathon conversation and we have extracted data
+      if(!isHackathonDataComplete && isHackathonStep){
       const hackathonUpdates: any = {};
 
       // Map conversation data to hackathon fields
@@ -185,7 +167,82 @@ export async function POST(request: NextRequest) {
           .update(hackathonUpdates)
           .eq("id", hackathonData.id);
       }
+    }
+    if(isPaymentRequired){
+        const paymentSessionId = generatePaymentSessionId();
+        return NextResponse.json({
+        response: "Let's proceed to finalize your hackathon! You can review all the details and make any last adjustments before publishing.",
+        conversationId: conversationId,
+        currentStep: 'payment_required',
+        paymentRequired: true,
+        paymentDetails: {
+          sessionId: paymentSessionId,
+          paymentUrl: `/api/payment/process/${paymentSessionId}`,
+          amount: hackathonData?.total_budget || 20000,
+          currency: 'USDC',
+          network: 'base-sepolia',
+          description: 'Hackathon submission fee'
+        },
+        extractedData,
+        hackathonData,
+        message: "Please complete the payment to finalize your submission."
+      });
+     }
+     if(!isAllChallengesDataComplete && isChallengeStep){
+        if (currentChallengeData && currentChallengeIndex !== null && currentChallengeIndex !== undefined) {
+            const { title, judging_criteria, resources, prize_amount,sponsor } =
+            currentChallengeData;
+    
+            const { data: existingChallenges } = await supabase
+            .from("challenges")
+            .select("*")
+            .eq("hackathon_id", hackathonData.id)
+            .eq("order_index", currentChallengeIndex);
+    
+            if (existingChallenges && existingChallenges.length > 0) {
+            const challengeUpdates: any = {};
+            if (title) challengeUpdates.title = title;
+            if (sponsor) challengeUpdates.sponsor = sponsor;
+            if (judging_criteria)
+                challengeUpdates.judging_criteria = judging_criteria;
+            if (resources) challengeUpdates.resources = resources;
+            if (prize_amount) {
+                challengeUpdates.prize_amount = prize_amount;
+            }
+    
+            if (Object.keys(challengeUpdates).length > 0) {
+                challengeUpdates.updated_at = new Date().toISOString();
+                await supabase
+                .from("challenges")
+                .update(challengeUpdates)
+                .eq("id", existingChallenges[0].id);
+            }
+            } else {
+            const newChallenge: any = {
+                hackathon_id: hackathonData.id,
+                order_index: currentChallengeIndex,
+                title: title || "Untitled Challenge",
+                judging_criteria: judging_criteria || [],
+                resources: resources || [],
+                prize_amount: prize_amount || 1000,
+                created_at: new Date().toISOString(),
+            };
+    
+            await supabase.from("challenges").insert(newChallenge);
+            }
+        }
+     }
 
+    if(isAllChallengesDataComplete){
+        return NextResponse.json({
+          response: "Let's proceed to finalize your hackathon! You can review all the details and make any last adjustments before publishing.",
+          conversationId: conversation.id,
+          currentStep: currentStep,
+          nextSteps: nextPlannedStep,
+          extractedData,
+          conversationData: updatedData,
+        });
+    }
       if (shouldGoToNextStep) {
         return NextResponse.json({
           response: nextInformationQuestion,
@@ -196,7 +253,6 @@ export async function POST(request: NextRequest) {
           conversationData: updatedData,
         });
       } else if (clarificationQuestion) {
-        // // Return comprehensive response
         return NextResponse.json({
           response: clarificationQuestion,
           conversationId: conversation.id,
@@ -219,4 +275,8 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function generatePaymentSessionId() {
+  return `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }

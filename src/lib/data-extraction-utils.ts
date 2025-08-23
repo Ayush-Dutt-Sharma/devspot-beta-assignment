@@ -1,13 +1,11 @@
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { StructuredOutputParser } from 'langchain/output_parsers';
-import { PromptTemplate } from '@langchain/core/prompts';
-import { z } from 'zod';
-import { HACKATHON_STEPS, CHALLENGE_CREATION_STEPS } from '@/lib/constants';
+import Replicate from "replicate";
+import { StructuredOutputParser } from "langchain/output_parsers";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { z } from "zod";
+import { HACKATHON_STEPS, CHALLENGE_CREATION_STEPS, JUDGING_CRITERIA } from "@/lib/constants";
 
-const llm = new ChatGoogleGenerativeAI({
-  model: 'gemini-2.0-flash-exp',
-  temperature: 0,
-  apiKey: process.env.GOOGLE_API_KEY,
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_KEY!,
 });
 
 export const HackathonDataSchema = z.object({
@@ -36,7 +34,10 @@ export class SmartDataExtractor {
     // const formatInstructions = this.hackathonParser.getFormatInstructions();
     
  const prompt = new PromptTemplate({
-      template: `You are Spot, DevSpot's AI assistant helping Technology Owners create hackathons. You are enthusiastic, professional, and knowledgeable about hackathon best practices
+      template: `
+      
+      THINK SLOWLY AND DEEPLY ABOUT THE USER'S MESSAGE AND THE CURRENT CONTEXT.
+      You are Spot, DevSpot's AI assistant helping Technology Owners create hackathons. You are enthusiastic, professional, and knowledgeable about hackathon best practices
 
 Always be encouraging and guide users step by step. Ask one question at a time and extract specific information based on the current step.     
       
@@ -61,14 +62,15 @@ IT IS IMPORTANT THAT ONE STEP CAN ASK MULTIPLE FIELDS, BUT USER MIGHT NOT PROVID
 
 ALL HACKTHON STEPS: {HACKATHON_STEPS}
 CHALLENGE CREATION STEPS: {CHALLENGE_CREATION_STEPS}
+AFTER ALL THE STEPS ARE COMPLETED, THE FINAL STEP IS TO MAKE THE PAYMENT SO MAKE 'isPaymentRequired' TRUE.
 Current context: {context}
 User message: "{message}"
 Hackathon current step: {currentStep}
 Hackathon existing data: {hackathonData}
-
+JUDGING CRITERIA SUGGESTIONS: {JUDGING_CRITERIA}
 Your answers should be crisp, polite, and to the point.
 
-You will always respond in JSON format as per the instructions below (the values should be extracted from the user message and existing hackathon data): 
+You will ALWAYS AND ONLY YOU CANNOT ATTACH ANY THING BEFORE OR AFTER THE JSON OBJECT ONLY THE JSON HAS TO BE RETUREND respond in JSON format as per the instructions below (the values should be extracted from the user message and existing hackathon data): 
 {{
   "hackathon_data": {{
     "title": "Hackathon Title",
@@ -87,11 +89,13 @@ You will always respond in JSON format as per the instructions below (the values
   "clarificationQuestion": "What organization will be hosting this hackathon?",
   "nextInformationQuestion": "When would you like registration to open?",
   "reasonForNextStepDecision": "All required fields for current step are present",
-  "isComplete": true,
+  "isChallengeStep": true (if we are in challenge creation step else false),
+  "isHackathonStep": true (if we are in hackathon creation step else false),
   "nextPlannedStep": string | null (if shouldGoToNextStep is true, provide the next step from STEPS ARRAY else null),
   "isHackathonDataComplete": true or false (if all required fields are present in hackathon_data)
   "isAllChallengesDataComplete": true or false (if all required fields are present in challenges_data)
-  "numOfChallenges": number (if challenges_data is present, provide the number of challenges)
+  "currentChallengeIndex": number (if challenges_data is present, provide the current challenge index else null)
+  "isPaymentRequired": true or false (if all hackathon and challenge steps are completed),
   "currentChallengeData":{{
     "title": "Challenge Title",
     "prize_amount": 1000,
@@ -99,32 +103,42 @@ You will always respond in JSON format as per the instructions below (the values
     "judging_criteria": ["Criteria 1", "Criteria 2"](At least 4 judging criteria is required),
     "resources": ["Resource 1", "Resource 2"](Not required field),}}
 }}`,
- inputVariables: ['message', 'context', 'hackathonData', 'currentStep', 'currentDate', 'HACKATHON_STEPS', 'CHALLENGE_CREATION_STEPS'],
+ inputVariables: ['message', 'context', 'hackathonData', 'currentStep', 'currentDate', 'HACKATHON_STEPS', 'CHALLENGE_CREATION_STEPS', 'JUDGING_CRITERIA'],
     //   partialVariables: { format_instructions: formatInstructions }
     });
 
-    const input = await prompt.format({
-      message,
-      context: context ? JSON.stringify(context) : 'No previous context',
-        hackathonData: hackathonData ? JSON.stringify(hackathonData) : 'No existing data',
-        currentStep,
-        currentDate: new Date().toISOString(),
-        HACKATHON_STEPS,
-        CHALLENGE_CREATION_STEPS
-    });
+   const input = await prompt.format({
+    message,
+    context: context ? JSON.stringify(context) : "No previous context",
+    hackathonData: hackathonData
+      ? JSON.stringify(hackathonData)
+      : "No existing data",
+    currentStep,
+    currentDate: new Date().toISOString(),
+    HACKATHON_STEPS,
+    CHALLENGE_CREATION_STEPS,
+    JUDGING_CRITERIA: JUDGING_CRITERIA.join(", "),
+  });
 
-    try {
-      const response = await llm.invoke(input);
-      const responseContent = response.content as string;
-      
-      // Clean the response content
-      const cleanedContent = this.cleanResponseContent(responseContent);
-      //@ts-ignore
-      return JSON.parse(cleanedContent) || {};
-    } catch (error) {
-      console.error('Error extracting hackathon data:', error);
-      return this.fallbackExtraction(message, 'hackathon');
+  try {
+    let fullResponse = "";
+    for await (const event of replicate.stream("anthropic/claude-4-sonnet", {
+      input: {
+        prompt: input,
+      },
+    })) {
+      fullResponse += event.toString();
     }
+
+    console.log("LLM raw response:", fullResponse);
+
+    const cleanedContent = this.cleanResponseContent(fullResponse);
+
+    return JSON.parse(cleanedContent) || {};
+  } catch (error) {
+    console.error("Error extracting hackathon data:", error);
+    return this.fallbackExtraction(message, "hackathon");
+  }
   }
 
 

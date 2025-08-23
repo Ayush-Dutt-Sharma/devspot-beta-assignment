@@ -38,7 +38,7 @@ const Header: React.FC<HeaderProps> = ({ onSearch }) => {
             />
           </a>
           
-          <div className="relative">
+          {/* <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-devspot-text-muted" size={16} />
             <input
               type="text"
@@ -47,7 +47,7 @@ const Header: React.FC<HeaderProps> = ({ onSearch }) => {
               placeholder="Search for hackathons, companies, developers, events and discussions"
               className="input-primary w-96 pl-10"
             />
-          </div>
+          </div> */}
         </div>
         
         <div className="flex items-center gap-4">
