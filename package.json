@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.873.0",
+    "@aws-sdk/s3-request-presigner": "^3.873.0",
     "@clerk/nextjs": "^6.31.3",
     "@clerk/types": "^4.80.0",
     "@langchain/core": "^0.3.72",
