@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { auth } from "@clerk/nextjs/server";
-import {
-  getConversationProgress,
-  validateConversationData,
-} from "@/lib/conversation-memory";
-import {
-  getNextQuestions,
-  HackathonDataSchema,
-} from "@/lib/data-extraction-utils";
 import InstanceCache from "@/lib/InstanceCache";
-import { generatePrompt } from "@/lib/prompts";
-import { HACKATHON_STEPS } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
   try {
