@@ -7,8 +7,9 @@ import ChatInput from "@/components/chat/ChatInput";
 import ModeCard from "@/components/ui/ModelCard";
 import PaymentPopup from "@/components/payment/PaymentPopup";
 import { Zap, User, Compass } from "lucide-react";
-import { useUser, SignInButton } from "@clerk/nextjs";
+import { useUser, SignInButton, SignInWithMetamaskButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import { JUDGING_CRITERIA } from "@/lib/constants";
 
 type Mode = "hackathon" | "profile" | "explore" | null;
 type Message = {
@@ -31,12 +32,8 @@ const DevSpotChatInterface = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [hackathonId, setHackathonId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [showPaymentPopup, setShowPaymentPopup] = useState<boolean>(false);
-  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(
-    null
-  );
-  const [hackathonTitle, setHackathonTitle] = useState<string>("");
-
+  const [isDraftBtnVisible, setIsDraftBtnVisible] = useState<boolean>(false);
+  const [isJudgingCriteriaVisible, setIsJudgingCriteriaVisible] = useState<boolean>(false)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
@@ -85,26 +82,23 @@ const DevSpotChatInterface = () => {
       if (response.ok) {
         const data = await response.json();
 
-        if (data.paymentRequired && data.paymentDetails) {
-          setPaymentDetails(data.paymentDetails);
+         
+        if (data.paymentRequired) {
 
-          if (data.hackathonData.title) {
-            setHackathonTitle(data.hackathonData.title);
-          }
-          if (data.hackathonData.id) {
+
+ if (data.hackathonData.id) {
             setHackathonId(data.hackathonData.id);
           }
-
-          setShowPaymentPopup(true);
-
           const newBotMessage: Message = {
             id: Date.now() + 1,
             sender: "bot",
-            content: data.response,
+            content: "Done with all the details, You can now move to the draft and make tha final payment.",
           };
-
+          setIsDraftBtnVisible(true)
           setMessages((prev) => [...prev, newBotMessage]);
-        } else {
+          setTimeout(()=>router.push(`/draft/${hackathonId}`),500)
+        }
+        else {
           const newBotMessage: Message = {
             id: Date.now() + 1,
             sender: "bot",
@@ -139,52 +133,6 @@ const DevSpotChatInterface = () => {
     }
   };
 
-  const handlePaymentComplete = async (hackathonId: string | null) => {
-    try {
-      const response = await fetch("/api/payment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: paymentDetails?.sessionId,
-          hackathonId: hackathonId,
-          action: "complete_payment",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Payment completion failed");
-      }
-
-      const result = await response.json();
-
-      const successMessage: Message = {
-        id: Date.now(),
-        sender: "bot",
-        content:
-          "🎉 Payment completed successfully! Your hackathon has been published and is now live on DevSpot. Participants can start registering immediately!",
-      };
-
-      setMessages((prev) => [...prev, successMessage]);
-
-      setShowPaymentPopup(false);
-      setPaymentDetails(null);
-
-      router.push(`/hackathons/${hackathonId}`);
-    } catch (error) {
-      console.error("Error completing payment:", error);
-
-      const errorMessage: Message = {
-        id: Date.now(),
-        sender: "bot",
-        content:
-          "❌ Sorry, there was an issue completing your payment. Please try again or contact support if the problem persists.",
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
-    }
-  };
 
   const showInitialOptions = selectedMode === null;
 
@@ -205,11 +153,11 @@ const DevSpotChatInterface = () => {
                 Please sign in to create hackathons and access all DevSpot
                 features.
               </p>
-              <SignInButton mode="modal">
+              <SignInWithMetamaskButton mode="modal">
                 <button className="btn-primary w-full">
                   Sign In to Continue
                 </button>
-              </SignInButton>
+              </SignInWithMetamaskButton>
             </div>
           </div>
         </div>
@@ -231,6 +179,12 @@ const DevSpotChatInterface = () => {
                 <MessageBubble
                   message={message.content}
                   sender={message.sender}
+                  isButtonVisible={false}
+                  buttonText="Check and Pay"
+                  onButtonClick={()=>router.push(`/draft/${hackathonId}`)}
+                  selectableItems={JUDGING_CRITERIA}
+                  showSelectableItems={isJudgingCriteriaVisible}
+
                 />
 
                 {message.sender === "bot" &&
@@ -275,15 +229,6 @@ const DevSpotChatInterface = () => {
         </div>
       </div>
 
-      {paymentDetails && (
-        <PaymentPopup
-          isOpen={showPaymentPopup}
-          onClose={() => setShowPaymentPopup(false)}
-          paymentDetails={paymentDetails}
-          onPaymentComplete={() => handlePaymentComplete(hackathonId)}
-          hackathonTitle={hackathonTitle}
-        />
-      )}
     </div>
   );
 };

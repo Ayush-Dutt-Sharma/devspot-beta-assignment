@@ -12,7 +12,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const getSidebarItems = (role: string) => {
     const baseItems = [
-      { icon: MessageSquare, label: 'Chat with Spot', href: '/chat' },
+      { icon: MessageSquare, label: 'Chat with Spot', href: '/' },
       { icon: Calendar, label: 'Hackathons', href: '/hackathons' },
     ];
 

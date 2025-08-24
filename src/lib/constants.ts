@@ -69,7 +69,7 @@ export const JUDGING_CRITERIA = [
   'Relevance to Theme / Challenge',
   'Use of Sponsor Tech / APIs',
   'Team Collaboration',
-] as const;
+];
 
 export const HACKATHON_FORMATS = [
   'virtual',
@@ -101,13 +101,17 @@ export const SAMPLE_BOUNTIES = [
   }
 ] as const;
 export const HACKATHON_STEPS = [
-  'title + organization',
-  'registration_date + hacking_start + submission_deadline',
+  'What is the title of the hackathon?',
+  'What is the organization of the hackathon?',
+  'registration_date',
+  'hacking_start',
+  'submission_deadline',
   'total_budget (DEFAULT 20k minimum)',
   'How many challenges would you like to create?']
 
 export const CHALLENGE_CREATION_STEPS = [
   'title',
+  'description',
   'prizes',
   'sponsor',
   'judging criteria',

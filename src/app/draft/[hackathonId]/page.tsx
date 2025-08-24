@@ -3,11 +3,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
-import { 
-  Calendar, MapPin, DollarSign, Users, Globe, Building2, Trophy, 
+import PaymentPopup from '@/components/payment/PaymentPopup';
+import {
+  Calendar, MapPin, DollarSign, Users, Globe, Building2, Trophy,
   Edit3, Save, Plus, Trash2, X, Check, AlertTriangle, CreditCard,
   MessageCircle
 } from 'lucide-react';
+import { useUser, useAuth } from '@clerk/nextjs';
+import { wrapFetchWithPayment } from 'x402-fetch';
+import { ethers } from 'ethers';
 
 interface Challenge {
   id: string;
@@ -47,21 +51,21 @@ interface HackathonResponse {
 }
 
 const DEFAULT_JUDGING_CRITERIA = [
-  "Innovation / Creativity",
-  "Technical Execution", 
-  "User Experience (UX)",
-  "Impact / Usefulness",
-  "Completeness / Functionality",
-  "Presentation / Demo Quality",
-  "Scalability / Future Potential",
-  "Relevance to Theme / Challenge"
+  'Innovation / Creativity',
+  'Technical Execution',
+  'User Experience (UX)',
+  'Impact / Usefulness',
+  'Completeness / Functionality',
+  'Presentation / Demo Quality',
+  'Scalability / Future Potential',
+  'Relevance to Theme / Challenge'
 ];
 
 const DraftHackathonEditPage = () => {
   const params = useParams();
   const router = useRouter();
   const hackathonId = params?.hackathonId as string;
-  
+
   const [data, setData] = useState<HackathonResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,12 +76,21 @@ const DraftHackathonEditPage = () => {
   const [showNewChallengeForm, setShowNewChallengeForm] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
+  const { user } = useUser();
+  const { getToken } = useAuth();
+
   // Form states
   const [hackathonForm, setHackathonForm] = useState<Partial<Hackathon>>({});
-  const [challengeForms, setChallengeForms] = useState<{[key: string]: Partial<Challenge>}>({});
+  const [challengeForms, setChallengeForms] = useState<{ [key: string]: Partial<Challenge> }>({});
+
+  // Fetch wallet address from Clerk user
+  const walletAddress = user?.web3Wallets[0].web3Wallet as string | undefined;
+
+  const isWalletConnected = !!walletAddress;
 
   useEffect(() => {
     if (hackathonId) {
@@ -86,11 +99,9 @@ const DraftHackathonEditPage = () => {
   }, [hackathonId]);
 
   const fetchHackathon = async () => {
-
     try {
       setLoading(true);
       const response = await fetch(`/api/hackathons/${hackathonId}`);
-      
       if (!response.ok) {
         throw new Error('Failed to fetch hackathon data');
       }
@@ -98,13 +109,12 @@ const DraftHackathonEditPage = () => {
       const hackathonData: HackathonResponse = await response.json();
       setData(hackathonData);
       setHackathonForm(hackathonData.hackathon);
-      
-      const forms: {[key: string]: Partial<Challenge>} = {};
-      hackathonData?.hackathon.challenges.forEach(challenge => {
+
+      const forms: { [key: string]: Partial<Challenge> } = {};
+      hackathonData?.hackathon.challenges.forEach((challenge) => {
         forms[challenge.id] = { ...challenge };
       });
       setChallengeForms(forms);
-      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -125,11 +135,10 @@ const DraftHackathonEditPage = () => {
       errors.push(`Total budget ($${hackathonForm.total_budget}) cannot be lower than sum of challenge prizes ($${totalChallengesPrizes})`);
     }
 
-    if (data && data?.hackathon?.challenges.length < 2) {
+    if (data && data.hackathon.challenges.length < 2) {
       errors.push('Minimum 2 challenges required');
     }
 
-    // Date validation
     if (hackathonForm.registration_date) {
       const registrationDate = new Date(hackathonForm.registration_date);
       if (registrationDate < now) {
@@ -153,7 +162,6 @@ const DraftHackathonEditPage = () => {
       }
     }
 
-    // Validate each challenge
     data?.hackathon.challenges.forEach((challenge, index) => {
       if (!challenge.judging_criteria || challenge.judging_criteria.length < 4) {
         errors.push(`Challenge ${index + 1} needs at least 4 judging criteria`);
@@ -164,79 +172,72 @@ const DraftHackathonEditPage = () => {
     return errors.length === 0;
   };
 
- const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
-  try {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    const presignedURL = new URL('/api/s3/presigned', window.location.href);
-    presignedURL.searchParams.set('fileName', file.name);
-    presignedURL.searchParams.set('contentType', file.type);
-    
-    const presignedResponse = await fetch(presignedURL.toString());
-    if (!presignedResponse.ok) {
-      throw new Error('Failed to get presigned URL');
-    }
-    
-    const presignedData = await presignedResponse.json();
-    console.log('Got presigned URL:', presignedData);
+      const presignedURL = new URL('/api/s3/presigned', window.location.href);
+      presignedURL.searchParams.set('fileName', file.name);
+      presignedURL.searchParams.set('contentType', file.type);
 
-    const uploadResponse = await fetch(presignedData.signedUrl, {
-      method: 'PUT',
-      body: file,
-      headers: {
-        'Content-Type': file.type
+      const presignedResponse = await fetch(presignedURL.toString());
+      if (!presignedResponse.ok) {
+        throw new Error('Failed to get presigned URL');
       }
-    });
 
-    if (!uploadResponse.ok) {
-      throw new Error('Failed to upload to S3');
+      const presignedData = await presignedResponse.json();
+      const uploadResponse = await fetch(presignedData.signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type
+        }
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload to S3');
+      }
+
+      const imageUrl = presignedData.signedUrl.split('?')[0];
+
+      setHackathonForm((prev) => ({
+        ...prev,
+        [type]: imageUrl
+      }));
+
+      const jsonBody = {
+        ...hackathonForm,
+        [type]: imageUrl
+      };
+      delete jsonBody['challenges'];
+
+      const updateResponse = await fetch(`/api/hackathons/${hackathonId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jsonBody)
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error('Failed to update hackathon in database');
+      }
+    } catch (err) {
+      console.error('Image upload error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update image');
     }
-
-    console.log('Uploaded to S3 successfully',uploadResponse);
-
-    const imageUrl = presignedData.signedUrl.split('?')[0];
-    
-    setHackathonForm(prev => ({
-      ...prev,
-      [type === 'logo' ? 'logo' : 'banner']: imageUrl
-    }));
-
-    const jsonBody = {
-      ...hackathonForm,
-      [type === 'logo' ? 'logo' : 'banner']: imageUrl
-    };
-    delete jsonBody['challenges'];
-
-    const updateResponse = await fetch(`/api/hackathons/${hackathonId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(jsonBody)
-    });
-
-    if (!updateResponse.ok) {
-      throw new Error('Failed to update hackathon in database');
-    }
-
-    console.log('Database updated successfully');
-
-  } catch (err) {
-    console.error('Image upload error:', err);
-    setError(err instanceof Error ? err.message : 'Failed to update image');
-  }
-}
+  };
 
   const saveHackathon = async () => {
     if (!validateHackathon()) return;
 
     try {
       setSaving(true);
-      const jsonbody = {...hackathonForm}
-      delete jsonbody['challenges']
+      const jsonBody = { ...hackathonForm };
+      delete jsonBody['challenges'];
       const response = await fetch(`/api/hackathons/${hackathonId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(jsonbody)
+        body: JSON.stringify(jsonBody)
       });
 
       if (!response.ok) {
@@ -255,7 +256,7 @@ const DraftHackathonEditPage = () => {
 
   const saveChallenge = async (challengeId: string) => {
     const challengeData = challengeForms[challengeId];
-    
+
     if (!challengeData.judging_criteria || challengeData.judging_criteria.length < 4) {
       setError('Challenge must have at least 4 judging criteria');
       return;
@@ -274,7 +275,7 @@ const DraftHackathonEditPage = () => {
         throw new Error(errorData.error || 'Failed to update challenge');
       }
 
-      setEditingChallenges(prev => prev.filter(id => id !== challengeId));
+      setEditingChallenges((prev) => prev.filter((id) => id !== challengeId));
       await fetchHackathon();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save challenge');
@@ -316,7 +317,7 @@ const DraftHackathonEditPage = () => {
   };
 
   const deleteChallenge = async (challengeId: string) => {
-    if (data && data?.hackathon.challenges.length <= 2) {
+    if (data && data.hackathon.challenges.length <= 2) {
       setError('Cannot delete challenge. Minimum 2 challenges required.');
       return;
     }
@@ -347,12 +348,66 @@ const DraftHackathonEditPage = () => {
       return;
     }
 
+    if (!isWalletConnected) {
+      setError('Please connect your Web3 wallet to publish');
+      return;
+    }
+
+    setShowPaymentPopup(true);
+  };
+
+  const handlePaymentComplete = () => {
+    setShowPaymentPopup(false);
+    router.push(`/hackathons/${hackathonId}`);
+  };
+
+  const handlePayment = async () => {
+    if (!walletAddress) {
+      setError('No wallet address found');
+      return;
+    }
+
     try {
       setSaving(true);
-      const response = await fetch(`/api/hackathons/${hackathonId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'published' })
+        //@ts-ignore
+      if (!window.ethereum) {
+      throw new Error('No Web3 provider detected. Please install MetaMask or another wallet.');
+    }
+
+    //@ts-ignore
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+
+    const wallet = {
+      address: walletAddress as `0x${string}`, 
+      source: 'metamask',
+      signMessage: async ({ message }: { message: string }) => {
+        return (await signer.signMessage(message)) as `0x${string}`;
+      },
+      signTransaction: async (tx: ethers.TransactionRequest) => {
+        const signedTx = await signer.signTransaction(tx);
+        return signedTx as `0x${string}`;
+      },
+      signTypedData: async (params: {
+        domain: ethers.TypedDataDomain;
+        types: Record<string, ethers.TypedDataField[]>;
+        value: Record<string, any>;
+      }) => {
+        const signature = await signer.signTypedData(params.domain, params.types, params.value);
+        return signature as `0x${string}`;
+      },
+      publicKey: undefined,
+      nonceManager: undefined,
+      signAuthorization: undefined,
+      sign: undefined,
+      type: 'local' as const
+    };
+//@ts-ignore
+      const fetchWithPayment = wrapFetchWithPayment(fetch, wallet);
+
+      const response = await fetchWithPayment(`/api/hackathons/${hackathonId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
       });
 
       if (!response.ok) {
@@ -360,7 +415,7 @@ const DraftHackathonEditPage = () => {
         throw new Error(errorData.error || 'Failed to publish hackathon');
       }
 
-      router.push(`/hackathon/${hackathonId}`);
+      handlePaymentComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to publish hackathon');
     } finally {
@@ -387,12 +442,12 @@ const DraftHackathonEditPage = () => {
   if (loading) {
     return (
       <div className="h-screen bg-devspot-dark text-white flex flex-col">
-        <Header onSearch={(query) => console.log("Search:", query)} />
+        <Header onSearch={(query) => console.log('Search:', query)} />
         <div className="flex-1 flex">
           <Sidebar activeItem="Hackathons" />
           <div className="flex-1 flex items-center justify-center">
             <div className="animate-pulse">
-              <div className="w-8 h-8 bg-white/20 rounded-full animate-spin border-2 border-white/30 border-t-white"></div>
+              <div className="w-8 h-8 bg-white/20 rounded-full animate-spin border-2 border-white/30 border-t-white" />
             </div>
           </div>
         </div>
@@ -403,13 +458,13 @@ const DraftHackathonEditPage = () => {
   if (error && !data) {
     return (
       <div className="h-screen bg-devspot-dark text-white flex flex-col">
-        <Header onSearch={(query) => console.log("Search:", query)} />
+        <Header onSearch={(query) => console.log('Search:', query)} />
         <div className="flex-1 flex">
           <Sidebar activeItem="Hackathons" />
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <p className="text-white/70 mb-4">{error}</p>
-              <button 
+              <button
                 onClick={fetchHackathon}
                 className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg border border-white/20 transition-all duration-200"
               >
@@ -424,16 +479,13 @@ const DraftHackathonEditPage = () => {
 
   if (!data) return null;
 
-  const { hackathon } = data;
-  const { challenges} = hackathon
+  const { hackathon, combinedSponsors, combinedResources } = data;
 
   return (
     <div className="h-screen bg-devspot-dark text-white flex flex-col">
-      <Header onSearch={(query) => console.log("Search:", query)} />
-      
+      <Header onSearch={(query) => console.log('Search:', query)} />
       <div className="flex-1 flex">
         <Sidebar activeItem="Hackathons" />
-        
         <div className="flex-1 overflow-y-auto">
           <div className="relative h-32 bg-gradient-to-br from-white/5 via-white/10 to-white/5 border-b border-white/10 backdrop-blur-sm flex items-center justify-center">
             <h1 className="text-3xl font-light text-white">Draft</h1>
@@ -457,7 +509,7 @@ const DraftHackathonEditPage = () => {
             {error && (
               <div className="bg-red-500/10 backdrop-blur-xl rounded-2xl p-4 border border-red-500/20">
                 <p className="text-red-400">{error}</p>
-                <button 
+                <button
                   onClick={() => setError(null)}
                   className="mt-2 text-red-300 hover:text-red-200 text-sm underline"
                 >
@@ -535,7 +587,6 @@ const DraftHackathonEditPage = () => {
                       )}
                     </div>
                   </div>
-                  
                   <div className="md:col-span-2">
                     <label className="block text-white/70 font-light mb-2">Banner</label>
                     <div className="flex items-center gap-4">
@@ -557,13 +608,12 @@ const DraftHackathonEditPage = () => {
                       )}
                     </div>
                   </div>
-                  
                   <div>
                     <label className="block text-white/70 font-light mb-2">Title</label>
                     <input
                       type="text"
                       value={hackathonForm.title || ''}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, title: e.target.value }))}
+                      onChange={(e) => setHackathonForm((prev) => ({ ...prev, title: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -572,7 +622,7 @@ const DraftHackathonEditPage = () => {
                     <input
                       type="text"
                       value={hackathonForm.organization || ''}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, organization: e.target.value }))}
+                      onChange={(e) => setHackathonForm((prev) => ({ ...prev, organization: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -582,7 +632,12 @@ const DraftHackathonEditPage = () => {
                       type="number"
                       min="20000"
                       value={hackathonForm.total_budget || ''}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, total_budget: parseInt(e.target.value) }))}
+                      onChange={(e) =>
+                        setHackathonForm((prev) => ({
+                          ...prev,
+                          total_budget: e.target.value ? parseInt(e.target.value) : undefined
+                        }))
+                      }
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -590,7 +645,7 @@ const DraftHackathonEditPage = () => {
                     <label className="block text-white/70 font-light mb-2">Format</label>
                     <select
                       value={hackathonForm.format || ''}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, format: e.target.value }))}
+                      onChange={(e) => setHackathonForm((prev) => ({ ...prev, format: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     >
                       <option value="virtual">Virtual</option>
@@ -602,8 +657,8 @@ const DraftHackathonEditPage = () => {
                     <label className="block text-white/70 font-light mb-2">Registration Date</label>
                     <input
                       type="datetime-local"
-                      value={formatDate(hackathonForm.registration_date || null)}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, registration_date: e.target.value }))}
+                      value={formatDate(hackathonForm.registration_date)}
+                      onChange={(e) => setHackathonForm((prev) => ({ ...prev, registration_date: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -611,8 +666,8 @@ const DraftHackathonEditPage = () => {
                     <label className="block text-white/70 font-light mb-2">Hacking Start</label>
                     <input
                       type="datetime-local"
-                      value={formatDate(hackathonForm.hacking_start || null)}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, hacking_start: e.target.value }))}
+                      value={formatDate(hackathonForm.hacking_start)}
+                      onChange={(e) => setHackathonForm((prev) => ({ ...prev, hacking_start: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -620,8 +675,8 @@ const DraftHackathonEditPage = () => {
                     <label className="block text-white/70 font-light mb-2">Submission Deadline</label>
                     <input
                       type="datetime-local"
-                      value={formatDate(hackathonForm.submission_deadline || null)}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, submission_deadline: e.target.value }))}
+                      value={formatDate(hackathonForm.submission_deadline)}
+                      onChange={(e) => setHackathonForm((prev) => ({ ...prev, submission_deadline: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -630,7 +685,12 @@ const DraftHackathonEditPage = () => {
                     <input
                       type="number"
                       value={hackathonForm.event_size || ''}
-                      onChange={(e) => setHackathonForm(prev => ({ ...prev, event_size: parseInt(e.target.value) }))}
+                      onChange={(e) =>
+                        setHackathonForm((prev) => ({
+                          ...prev,
+                          event_size: e.target.value ? parseInt(e.target.value) : undefined
+                        }))
+                      }
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                   </div>
@@ -647,7 +707,9 @@ const DraftHackathonEditPage = () => {
                   </div>
                   <div className="space-y-2">
                     <h3 className="font-light text-white/70">Total Budget</h3>
-                    <p className="text-white font-light">${hackathon.total_budget?.toLocaleString()} {hackathon.budget_currency}</p>
+                    <p className="text-white font-light">
+                      ${hackathon.total_budget?.toLocaleString() || '0'} {hackathon.budget_currency}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <h3 className="font-light text-white/70">Format</h3>
@@ -664,9 +726,10 @@ const DraftHackathonEditPage = () => {
                 </div>
               )}
             </div>
+
             <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl animate-fade-in">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-light text-white">Challenges ({challenges.length})</h2>
+                <h2 className="text-2xl font-light text-white">Challenges ({hackathon.challenges.length})</h2>
                 <button
                   onClick={() => setShowNewChallengeForm(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg border border-blue-500/30 transition-all duration-200"
@@ -684,20 +747,25 @@ const DraftHackathonEditPage = () => {
                       type="text"
                       placeholder="Challenge title"
                       value={newChallenge.title || ''}
-                      onChange={(e) => setNewChallenge(prev => ({ ...prev, title: e.target.value }))}
+                      onChange={(e) => setNewChallenge((prev) => ({ ...prev, title: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                     <textarea
                       placeholder="Challenge description"
                       value={newChallenge.description || ''}
-                      onChange={(e) => setNewChallenge(prev => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) => setNewChallenge((prev) => ({ ...prev, description: e.target.value }))}
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm h-24"
                     />
                     <input
                       type="number"
                       placeholder="Prize amount"
                       value={newChallenge.prize_amount || ''}
-                      onChange={(e) => setNewChallenge(prev => ({ ...prev, prize_amount: parseInt(e.target.value) }))}
+                      onChange={(e) =>
+                        setNewChallenge((prev) => ({
+                          ...prev,
+                          prize_amount: e.target.value ? parseInt(e.target.value) : undefined
+                        }))
+                      }
                       className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                     />
                     <div>
@@ -705,7 +773,7 @@ const DraftHackathonEditPage = () => {
                         Judging Criteria (minimum 4 required)
                       </label>
                       <div className="space-y-2">
-                        {DEFAULT_JUDGING_CRITERIA.map((criteria, index) => (
+                        {DEFAULT_JUDGING_CRITERIA.map((criteria) => (
                           <label key={criteria} className="flex items-center gap-3">
                             <input
                               type="checkbox"
@@ -713,14 +781,14 @@ const DraftHackathonEditPage = () => {
                               onChange={(e) => {
                                 const currentCriteria = newChallenge.judging_criteria || [];
                                 if (e.target.checked) {
-                                  setNewChallenge(prev => ({
+                                  setNewChallenge((prev) => ({
                                     ...prev,
                                     judging_criteria: [...currentCriteria, criteria]
                                   }));
                                 } else {
-                                  setNewChallenge(prev => ({
+                                  setNewChallenge((prev) => ({
                                     ...prev,
-                                    judging_criteria: currentCriteria.filter(c => c !== criteria)
+                                    judging_criteria: currentCriteria.filter((c) => c !== criteria)
                                   }));
                                 }
                               }}
@@ -756,7 +824,7 @@ const DraftHackathonEditPage = () => {
               )}
 
               <div className="space-y-6">
-                {challenges.map((challenge, index) => (
+                {hackathon.challenges.map((challenge, index) => (
                   <div key={challenge.id} className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-light text-white">Challenge {index + 1}</h3>
@@ -764,13 +832,13 @@ const DraftHackathonEditPage = () => {
                         {!editingChallenges.includes(challenge.id) ? (
                           <>
                             <button
-                              onClick={() => setEditingChallenges(prev => [...prev, challenge.id])}
+                              onClick={() => setEditingChallenges((prev) => [...prev, challenge.id])}
                               className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg border border-white/20 transition-all duration-200 text-sm"
                             >
                               <Edit3 className="w-3 h-3" />
                               Edit
                             </button>
-                            {challenges.length > 2 && (
+                            {hackathon.challenges.length > 2 && (
                               <button
                                 onClick={() => setShowDeleteConfirm(challenge.id)}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg border border-red-500/30 transition-all duration-200 text-sm"
@@ -792,8 +860,8 @@ const DraftHackathonEditPage = () => {
                             </button>
                             <button
                               onClick={() => {
-                                setEditingChallenges(prev => prev.filter(id => id !== challenge.id));
-                                setChallengeForms(prev => ({ ...prev, [challenge.id]: challenge }));
+                                setEditingChallenges((prev) => prev.filter((id) => id !== challenge.id));
+                                setChallengeForms((prev) => ({ ...prev, [challenge.id]: challenge }));
                               }}
                               className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg border border-red-500/30 transition-all duration-200 text-sm"
                             >
@@ -810,27 +878,36 @@ const DraftHackathonEditPage = () => {
                         <input
                           type="text"
                           value={challengeForms[challenge.id]?.title || ''}
-                          onChange={(e) => setChallengeForms(prev => ({
-                            ...prev,
-                            [challenge.id]: { ...prev[challenge.id], title: e.target.value }
-                          }))}
+                          onChange={(e) =>
+                            setChallengeForms((prev) => ({
+                              ...prev,
+                              [challenge.id]: { ...prev[challenge.id], title: e.target.value }
+                            }))
+                          }
                           className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                         />
                         <textarea
                           value={challengeForms[challenge.id]?.description || ''}
-                          onChange={(e) => setChallengeForms(prev => ({
-                            ...prev,
-                            [challenge.id]: { ...prev[challenge.id], description: e.target.value }
-                          }))}
+                          onChange={(e) =>
+                            setChallengeForms((prev) => ({
+                              ...prev,
+                              [challenge.id]: { ...prev[challenge.id], description: e.target.value }
+                            }))
+                          }
                           className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm h-20"
                         />
                         <input
                           type="number"
                           value={challengeForms[challenge.id]?.prize_amount || ''}
-                          onChange={(e) => setChallengeForms(prev => ({
-                            ...prev,
-                            [challenge.id]: { ...prev[challenge.id], prize_amount: parseInt(e.target.value) }
-                          }))}
+                          onChange={(e) =>
+                            setChallengeForms((prev) => ({
+                              ...prev,
+                              [challenge.id]: {
+                                ...prev[challenge.id],
+                                prize_amount: e.target.value ? parseInt(e.target.value) : undefined
+                              }
+                            }))
+                          }
                           className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm"
                         />
                         <div>
@@ -846,7 +923,7 @@ const DraftHackathonEditPage = () => {
                                   onChange={(e) => {
                                     const currentCriteria = challengeForms[challenge.id]?.judging_criteria || [];
                                     if (e.target.checked) {
-                                      setChallengeForms(prev => ({
+                                      setChallengeForms((prev) => ({
                                         ...prev,
                                         [challenge.id]: {
                                           ...prev[challenge.id],
@@ -854,11 +931,11 @@ const DraftHackathonEditPage = () => {
                                         }
                                       }));
                                     } else {
-                                      setChallengeForms(prev => ({
+                                      setChallengeForms((prev) => ({
                                         ...prev,
                                         [challenge.id]: {
                                           ...prev[challenge.id],
-                                          judging_criteria: currentCriteria.filter(c => c !== criteria)
+                                          judging_criteria: currentCriteria.filter((c) => c !== criteria)
                                         }
                                       }));
                                     }
@@ -878,13 +955,20 @@ const DraftHackathonEditPage = () => {
                           <p className="text-white/70 font-light">{challenge.description}</p>
                         )}
                         <div className="flex items-center gap-4">
-                          <span className="text-white/80 font-light">Prize: ${challenge.prize_amount?.toLocaleString()}</span>
-                          <span className="text-white/60 font-light">Criteria: {challenge.judging_criteria?.length || 0}</span>
+                          <span className="text-white/80 font-light">
+                            Prize: ${challenge.prize_amount?.toLocaleString() || '0'}
+                          </span>
+                          <span className="text-white/60 font-light">
+                            Criteria: {challenge.judging_criteria?.length || 0}
+                          </span>
                         </div>
                         {challenge.judging_criteria && challenge.judging_criteria.length > 0 && (
                           <div className="flex flex-wrap gap-2">
                             {challenge.judging_criteria.map((criteria, idx) => (
-                              <span key={idx} className="px-3 py-1 bg-white/10 backdrop-blur-sm rounded-full text-sm text-white/80 border border-white/20">
+                              <span
+                                key={idx}
+                                className="px-3 py-1 bg-white/10 backdrop-blur-sm rounded-full text-sm text-white/80 border border-white/20"
+                              >
                                 {criteria}
                               </span>
                             ))}
@@ -903,11 +987,10 @@ const DraftHackathonEditPage = () => {
                 <p className="text-white/70 font-light mb-6">
                   Once published, your hackathon will be live and participants can register.
                 </p>
-                
                 {validationErrors.length === 0 ? (
                   <button
                     onClick={publishHackathon}
-                    disabled={saving}
+                    disabled={saving || !isWalletConnected}
                     className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 text-white rounded-xl border border-white/20 transition-all duration-200 disabled:opacity-50 mx-auto backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
                   >
                     <CreditCard className="w-5 h-5" />
@@ -954,11 +1037,34 @@ const DraftHackathonEditPage = () => {
           </div>
         </div>
       )}
-      
+
+      {showPaymentPopup && (
+        <PaymentPopup
+          isOpen={showPaymentPopup}
+          onClose={() => setShowPaymentPopup(false)}
+          paymentDetails={{
+            amount: hackathonForm.total_budget?.toString() || '0',
+            currency: 'USDC',
+            network: 'Base Sepolia',
+            sessionId: Math.ceil(Math.random() * 1000000).toString(),
+            description: 'Complete the payment to publish your hackathon',
+            paymentUrl: ''
+          }}
+          onPaymentComplete={handlePayment}
+          hackathonTitle={hackathonForm.title || 'Your Hackathon'}
+        />
+      )}
+
       <style jsx>{`
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         .animate-fade-in {
           animation: fade-in 0.6s ease-out forwards;

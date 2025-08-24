@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
           creator_id: userData.id,
           event_size: 100,
           target_audience: "Developers",
-          format: "virtual", 
+          format: "virtual",
         })
         .select()
         .single();
@@ -111,7 +111,6 @@ export async function POST(request: NextRequest) {
     //@ts-ignore
     await memory.saveMessage("ai", extractedData);
 
-
     if (extractedData && Object.keys(extractedData).length > 0) {
       const {
         hackathon_data,
@@ -128,7 +127,7 @@ export async function POST(request: NextRequest) {
         isHackathonStep,
         isChallengeStep,
         currentChallengeIndex,
-        isPaymentRequired
+        isPaymentRequired,
       } = extractedData;
       const {
         title,
@@ -139,110 +138,109 @@ export async function POST(request: NextRequest) {
         total_budget,
       } = hackathon_data || {};
 
-
       await memory.updateCurrentStep(currentStep);
 
-      if(!isHackathonDataComplete && isHackathonStep){
-      const hackathonUpdates: any = {};
+      if (!isHackathonDataComplete && isHackathonStep) {
+        const hackathonUpdates: any = {};
 
-      // Map conversation data to hackathon fields
-      if (title) hackathonUpdates.title = title;
-      if (organization) hackathonUpdates.organization = organization;
-      if (registration_date)
-        hackathonUpdates.registration_date = registration_date;
-      if (hacking_start) hackathonUpdates.hacking_start = hacking_start;
-      if (submission_deadline)
-        hackathonUpdates.submission_deadline = submission_deadline;
-      if (total_budget) {
-        hackathonUpdates.total_budget = total_budget;
-        hackathonUpdates.budget_currency = "USDC";
+        // Map conversation data to hackathon fields
+        if (title) hackathonUpdates.title = title;
+        if (organization) hackathonUpdates.organization = organization;
+        if (registration_date)
+          hackathonUpdates.registration_date = registration_date;
+        if (hacking_start) hackathonUpdates.hacking_start = hacking_start;
+        if (submission_deadline)
+          hackathonUpdates.submission_deadline = submission_deadline;
+        if (total_budget) {
+          hackathonUpdates.total_budget = total_budget;
+          hackathonUpdates.budget_currency = "USDC";
+        }
+
+        // Only update if we have changes
+        if (Object.keys(hackathonUpdates).length > 0) {
+          hackathonUpdates.updated_at = new Date().toISOString();
+
+          await supabase
+            .from("hackathons")
+            .update(hackathonUpdates)
+            .eq("id", hackathonData.id);
+        }
       }
-
-      // Only update if we have changes
-      if (Object.keys(hackathonUpdates).length > 0) {
-        hackathonUpdates.updated_at = new Date().toISOString();
-
-        await supabase
-          .from("hackathons")
-          .update(hackathonUpdates)
-          .eq("id", hackathonData.id);
-      }
-    }
-    if(isPaymentRequired){
+      if (isPaymentRequired) {
         const paymentSessionId = generatePaymentSessionId();
         return NextResponse.json({
-        response: "Let's proceed to finalize your hackathon! You can review all the details and make any last adjustments before publishing.",
-        conversationId: conversationId,
-        currentStep: 'payment_required',
-        paymentRequired: true,
-        paymentDetails: {
-          sessionId: paymentSessionId,
-          paymentUrl: `/api/payment/process/${paymentSessionId}`,
-          amount: hackathonData?.total_budget || 20000,
-          currency: 'USDC',
-          network: 'base-sepolia',
-          description: 'Hackathon submission fee'
-        },
-        extractedData,
-        hackathonData,
-        message: "Please complete the payment to finalize your submission."
-      });
-     }
-     if(!isAllChallengesDataComplete && isChallengeStep){
-        if (currentChallengeData && currentChallengeIndex !== null && currentChallengeIndex !== undefined) {
-            const { title, judging_criteria, resources, prize_amount,sponsor } =
-            currentChallengeData;
-    
-            const { data: existingChallenges } = await supabase
+          response:
+            "Let's proceed to finalize your hackathon! You can review all the details and make any last adjustments before publishing.",
+          conversationId: conversationId,
+          currentStep: "payment_required",
+          paymentRequired: true,
+          paymentDetails: {
+            sessionId: paymentSessionId,
+            paymentUrl: `/api/payment/process/${paymentSessionId}`,
+            amount: hackathonData?.total_budget || 20000,
+            currency: "USDC",
+            network: "base-sepolia",
+            description: "Hackathon submission fee",
+          },
+          extractedData,
+          hackathonData,
+          message: "Please complete the payment to finalize your submission.",
+        });
+      }
+      if (!isAllChallengesDataComplete && isChallengeStep) {
+        if (
+          currentChallengeData &&
+          currentChallengeIndex !== null &&
+          currentChallengeIndex !== undefined
+        ) {
+          const {
+            title,
+            judging_criteria,
+            resources,
+            prize_amount,
+            sponsor,
+            description,
+          } = currentChallengeData;
+
+          const { data: existingChallenges } = await supabase
             .from("challenges")
             .select("*")
             .eq("hackathon_id", hackathonData.id)
             .eq("order_index", currentChallengeIndex);
-    
-            if (existingChallenges && existingChallenges.length > 0) {
-            const challengeUpdates: any = {};
-            if (title) challengeUpdates.title = title;
-            if (sponsor) challengeUpdates.sponsor = sponsor;
-            if (judging_criteria)
-                challengeUpdates.judging_criteria = judging_criteria;
-            if (resources) challengeUpdates.resources = resources;
-            if (prize_amount) {
-                challengeUpdates.prize_amount = prize_amount;
-            }
-    
-            if (Object.keys(challengeUpdates).length > 0) {
-                challengeUpdates.updated_at = new Date().toISOString();
-                await supabase
-                .from("challenges")
-                .update(challengeUpdates)
-                .eq("id", existingChallenges[0].id);
-            }
-            } else {
-            const newChallenge: any = {
-                hackathon_id: hackathonData.id,
-                order_index: currentChallengeIndex,
-                title: title || "Untitled Challenge",
-                judging_criteria: judging_criteria || [],
-                resources: resources || [],
-                prize_amount: prize_amount || 1000,
-                created_at: new Date().toISOString(),
-            };
-    
-            await supabase.from("challenges").insert(newChallenge);
-            }
-        }
-     }
 
-    if(isAllChallengesDataComplete){
+          const challengeData = {
+            id: existingChallenges?.[0]?.id || undefined, // Include ID if updating
+            hackathon_id: hackathonData.id,
+            order_index: currentChallengeIndex,
+            title: title || "Untitled Challenge",
+            sponsor: sponsor || null,
+            judging_criteria: judging_criteria || [],
+            resources: resources || [],
+            prize_amount: prize_amount || 1000,
+            description: description || "",
+            updated_at: new Date().toISOString(),
+            created_at:
+              existingChallenges?.[0]?.created_at || new Date().toISOString(),
+          };
+
+          await supabase.from("challenges").upsert(challengeData, {
+            onConflict: "id",
+            ignoreDuplicates: false,
+          });
+        }
+      }
+
+      if (isAllChallengesDataComplete) {
         return NextResponse.json({
-          response: "Let's proceed to finalize your hackathon! You can review all the details and make any last adjustments before publishing.",
+          response:
+            "Let's proceed to finalize your hackathon! You can review all the details and make any last adjustments before publishing.",
           conversationId: conversation.id,
           currentStep: currentStep,
           nextSteps: nextPlannedStep,
           extractedData,
           conversationData: updatedData,
         });
-    }
+      }
       if (shouldGoToNextStep) {
         return NextResponse.json({
           response: nextInformationQuestion,
