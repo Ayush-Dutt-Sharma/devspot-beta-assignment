@@ -26,12 +26,12 @@ export default clerkMiddleware(async (auth, req: NextRequest, event: NextFetchEv
     const pathname = req.nextUrl.pathname;
     const hackathonId = pathname.match(/\/api\/hackathons\/([^\/]+)\/publish/)?.[1];
     
-    if (hackathonId) {
-      const paymentResponse = await x402Handler(req);
-      if (paymentResponse) {
-        return paymentResponse;
-      }
-    }
+    // if (hackathonId) {
+    //   const paymentResponse = await x402Handler(req);
+    //   if (paymentResponse) {
+    //     return paymentResponse;
+    //   }
+    // }
   }
   
   return NextResponse.next();

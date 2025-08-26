@@ -88,9 +88,9 @@ const DraftHackathonEditPage = () => {
   const [challengeForms, setChallengeForms] = useState<{ [key: string]: Partial<Challenge> }>({});
 
   // Fetch wallet address from Clerk user
-  const walletAddress = user?.web3Wallets[0].web3Wallet as string | undefined;
+  // const walletAddress = user?.web3Wallets[0].web3Wallet as string | undefined;
 
-  const isWalletConnected = !!walletAddress;
+  // const isWalletConnected = !!walletAddress;
 
   useEffect(() => {
     if (hackathonId) {
@@ -348,10 +348,10 @@ const DraftHackathonEditPage = () => {
       return;
     }
 
-    if (!isWalletConnected) {
-      setError('Please connect your Web3 wallet to publish');
-      return;
-    }
+    // if (!isWalletConnected) {
+    //   setError('Please connect your Web3 wallet to publish');
+    //   return;
+    // }
 
     setShowPaymentPopup(true);
   };
@@ -362,50 +362,50 @@ const DraftHackathonEditPage = () => {
   };
 
   const handlePayment = async () => {
-    if (!walletAddress) {
-      setError('No wallet address found');
-      return;
-    }
+    // if (!walletAddress) {
+    //   setError('No wallet address found');
+    //   return;
+    // }
 
     try {
       setSaving(true);
         //@ts-ignore
-      if (!window.ethereum) {
-      throw new Error('No Web3 provider detected. Please install MetaMask or another wallet.');
-    }
+    //   if (!window.ethereum) {
+    //   throw new Error('No Web3 provider detected. Please install MetaMask or another wallet.');
+    // }
 
     //@ts-ignore
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
+    // const provider = new ethers.BrowserProvider(window.ethereum);
+    // const signer = await provider.getSigner();
 
-    const wallet = {
-      address: walletAddress as `0x${string}`, 
-      source: 'metamask',
-      signMessage: async ({ message }: { message: string }) => {
-        return (await signer.signMessage(message)) as `0x${string}`;
-      },
-      signTransaction: async (tx: ethers.TransactionRequest) => {
-        const signedTx = await signer.signTransaction(tx);
-        return signedTx as `0x${string}`;
-      },
-      signTypedData: async (params: {
-        domain: ethers.TypedDataDomain;
-        types: Record<string, ethers.TypedDataField[]>;
-        value: Record<string, any>;
-      }) => {
-        const signature = await signer.signTypedData(params.domain, params.types, params.value);
-        return signature as `0x${string}`;
-      },
-      publicKey: undefined,
-      nonceManager: undefined,
-      signAuthorization: undefined,
-      sign: undefined,
-      type: 'local' as const
-    };
+    // const wallet = {
+    //   address: walletAddress as `0x${string}`, 
+    //   source: 'metamask',
+    //   signMessage: async ({ message }: { message: string }) => {
+    //     return (await signer.signMessage(message)) as `0x${string}`;
+    //   },
+    //   signTransaction: async (tx: ethers.TransactionRequest) => {
+    //     const signedTx = await signer.signTransaction(tx);
+    //     return signedTx as `0x${string}`;
+    //   },
+    //   signTypedData: async (params: {
+    //     domain: ethers.TypedDataDomain;
+    //     types: Record<string, ethers.TypedDataField[]>;
+    //     value: Record<string, any>;
+    //   }) => {
+    //     const signature = await signer.signTypedData(params.domain, params.types, params.value);
+    //     return signature as `0x${string}`;
+    //   },
+    //   publicKey: undefined,
+    //   nonceManager: undefined,
+    //   signAuthorization: undefined,
+    //   sign: undefined,
+    //   type: 'local' as const
+    // };
 //@ts-ignore
-      const fetchWithPayment = wrapFetchWithPayment(fetch, wallet);
+      // const fetchWithPayment = wrapFetchWithPayment(fetch, wallet);
 
-      const response = await fetchWithPayment(`/api/hackathons/${hackathonId}/publish`, {
+      const response = await fetch(`/api/hackathons/${hackathonId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -990,7 +990,8 @@ const DraftHackathonEditPage = () => {
                 {validationErrors.length === 0 ? (
                   <button
                     onClick={publishHackathon}
-                    disabled={saving || !isWalletConnected}
+                    // disabled={saving || !isWalletConnected}
+                    disabled={saving}
                     className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 text-white rounded-xl border border-white/20 transition-all duration-200 disabled:opacity-50 mx-auto backdrop-blur-sm shadow-lg hover:shadow-xl transform hover:scale-105"
                   >
                     <CreditCard className="w-5 h-5" />

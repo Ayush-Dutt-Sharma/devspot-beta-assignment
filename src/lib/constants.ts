@@ -100,20 +100,47 @@ export const SAMPLE_BOUNTIES = [
     resources: ["https://glitter.xyz/docs"]
   }
 ] as const;
-export const HACKATHON_STEPS = [
-  'What is the title of the hackathon?',
-  'What is the organization of the hackathon?',
-  'registration_date',
-  'hacking_start',
-  'submission_deadline',
-  'total_budget (DEFAULT 20k minimum)',
-  'How many challenges would you like to create?']
+export const HACKATHON_STEPS: string[] = [
+  'What is your hackathon called?',
+  'Which organization is hosting this hackathon?',
+  'When does registration start?',
+  'When does the hacking/coding period begin?',
+  'What is the final submission deadline?',
+  'What is your total hackathon budget in USDC? (Minimum 20,000 USDC)',
+  'How many challenges would you like to create? (Minimum 2)',
+  'Can you provide logo?(Optional)',
+  'Can you provide banner?(Optional)',
+]
+
+export const CLARIFING_HACKATHON_QUESTION = [
+  'It seems like something was wrong in the Input. Can you try answering it again?',
+  'It seems like something was wrong in the Input. Can you try answering it again?',
+  'Provided date should be greater or equals to the current date.',
+  'Provided date should be greater or equals to the registraion date.',
+  'Provided date should be greater or equals to the hacking/coding date.',
+  'Minimum 20,000 USDC required',
+  'Minimum 2 challenges are required',
+  'Image failed to upload',
+  'Image failed to upload',
+]
+
+export const HACKATHON_DATA_INDEX = ['title','organization','registration_date','hacking_start','submission_deadline','total_budget','challenges_count','logo', 'banner']
 
 export const CHALLENGE_CREATION_STEPS = [
-  'title',
-  'description',
-  'prizes',
-  'sponsor',
-  'judging criteria',
-  'resources'
+  'What is the title of this challenge?',
+  'Describe the challenge objectives and requirements',
+  'How much is the prize money? (in USDC)',
+  'Which sponsor/organization is backing this challenge? (Optional)',
+  'What criteria will judges use to evaluate submissions? (Minimum 4 criteria required)',
+  'What resources APIs or documentation should participants use? (Optional)'
+]
+export const CHALLENGE_DATA_INDEX = ['title','description','prize_amount','sponsors','judging_criteria','resources']
+
+export const CLARIFING_CHALLENGE_QUESTION = [
+  'It seems like something was wrong in the Input. Can you try answering it again?',
+  'It seems like something was wrong in the Input. Can you try answering it again?',
+  "Prize money can't be greater than the Hackathon Total Budget",
+  '',
+  'Minimum 4 are required',
+  ''
 ]

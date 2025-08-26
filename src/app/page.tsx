@@ -9,7 +9,7 @@ import PaymentPopup from "@/components/payment/PaymentPopup";
 import { Zap, User, Compass } from "lucide-react";
 import { useUser, SignInButton, SignInWithMetamaskButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { JUDGING_CRITERIA } from "@/lib/constants";
+import { HACKATHON_STEPS, JUDGING_CRITERIA } from "@/lib/constants";
 
 type Mode = "hackathon" | "profile" | "explore" | null;
 type Message = {
@@ -33,15 +33,24 @@ const DevSpotChatInterface = () => {
   const [hackathonId, setHackathonId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isDraftBtnVisible, setIsDraftBtnVisible] = useState<boolean>(false);
-  const [isJudgingCriteriaVisible, setIsJudgingCriteriaVisible] = useState<boolean>(false)
+  const [isJudgingCriteriaVisible, setIsJudgingCriteriaVisible] =
+    useState<boolean>(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       sender: "bot",
       content:
-        "Welcome to DevSpot! I can help you create your technology profile, host a hackathon, and more. What can I do for you?",
+        "Welcome to DevSpot! I can help you create a hackathon, and more. What can I do for you?",
     },
   ]);
+  const [currentQuestion, setCurrentQuestion] = useState<string>("");
+  const [showSelectableItems, setShowSelectableItems] =
+    useState<boolean>(false);
+  const [showImageUpload, setShowImageUpload] = useState<boolean>(false);
+  const [imageUploadType, setImageUploadType] = useState<"logo" | "banner">(
+    "logo"
+  );
+  const [selectableItems, setSelectableItems] = useState<string[]>([]);
 
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -55,25 +64,53 @@ const DevSpotChatInterface = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = async (message: string) => {
-    if (isLoading) return;
-    setSelectedMode("hackathon");
+const handleSendMessage = async (message: string | string[]) => {
+  if (isLoading) return;
+  setSelectedMode("hackathon");
 
-    const newUserMessage: Message = {
-      id: Date.now(),
-      sender: "user",
-      content: message,
+  let messageContent: string;
+  let messageToSend: string | string[];
+
+  if (Array.isArray(message)) {
+    messageContent = `Selected criteria:\n${message.map((item) => `• ${item}`).join("\n")}`;
+    messageToSend = message;
+    setShowSelectableItems(false);
+  } else {
+    messageContent = message;
+    messageToSend = message;
+    if (message.includes("Image uploaded successfully") || message.includes('skip')) {
+      setShowImageUpload(false);
+    }
+  }
+
+  const newUserMessage: Message = {
+    id: Date.now(),
+    sender: "user",
+    content: messageContent,
+  };
+
+  setMessages((prev) => [...prev, newUserMessage]);
+  setIsLoading(true);
+
+  if (message === "Start creating the hackathon") {
+    const newBotMessage: Message = {
+      id: Date.now() + 1,
+      sender: "bot",
+      content: HACKATHON_STEPS[0],
     };
-
-    setMessages((prev) => [...prev, newUserMessage]);
-    setIsLoading(true);
-
+    setTimeout(() => {
+      setMessages((prev) => [...prev, newBotMessage]);
+      setCurrentQuestion(HACKATHON_STEPS[0]);
+      setIsLoading(false);
+    }, 300);
+  } else {
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message,
+          currentQuestion,
+          message: messageToSend,
           conversationId,
           mode: "hackathon",
         }),
@@ -82,58 +119,79 @@ const DevSpotChatInterface = () => {
       if (response.ok) {
         const data = await response.json();
 
-         
-        if (data.paymentRequired) {
-
-
- if (data.hackathonData.id) {
+        if (data.showJudgingCriteria) {
+          setShowSelectableItems(true);
+          setSelectableItems(JUDGING_CRITERIA);
+          setShowImageUpload(false);
+        }
+        if (data.showImageUpload) {
+          setShowImageUpload(true);
+          setImageUploadType(data.imageType || "logo");
+          setShowSelectableItems(false);
+        }
+          if (data.hackathonData.id && !hackathonId) {
             setHackathonId(data.hackathonData.id);
           }
+        if (data.paymentRequired) {
           const newBotMessage: Message = {
             id: Date.now() + 1,
             sender: "bot",
-            content: "Done with all the details, You can now move to the draft and make tha final payment.",
+            content:
+              "Done with all the details, You can now move to the draft and make the final payment.",
           };
-          setIsDraftBtnVisible(true)
+          setIsDraftBtnVisible(true);
           setMessages((prev) => [...prev, newBotMessage]);
-          setTimeout(()=>router.push(`/draft/${hackathonId}`),500)
-        }
-        else {
+          setTimeout(() => router.push(`/draft/${hackathonId}`), 500);
+        } else {
           const newBotMessage: Message = {
             id: Date.now() + 1,
             sender: "bot",
             content: data.response,
           };
-
           setMessages((prev) => [...prev, newBotMessage]);
+          setCurrentQuestion(data.response);
+
+          if (
+            data.response
+              .toLowerCase()
+              .includes("minimum 4 criteria required")
+          ) {
+            setShowSelectableItems(true);
+            setSelectableItems(JUDGING_CRITERIA);
+            setShowImageUpload(false);
+          }
+          if (
+            data.response.toLowerCase().includes("logo") ||
+            data.response.toLowerCase().includes("banner")
+          ) {
+            setShowImageUpload(true);
+            setImageUploadType(
+              data.response.toLowerCase().includes("logo") ? "logo" : "banner"
+            );
+            setShowSelectableItems(false);
+          }
         }
 
         if (data.conversationId && !conversationId) {
           setConversationId(data.conversationId);
         }
-
-        console.log("Conversation progress:", data.progress);
-        console.log("Extracted data:", data.extractedData);
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to send message");
       }
     } catch (error) {
       console.error("Error sending message:", error);
-
       const errorMessage: Message = {
         id: Date.now() + 1,
         sender: "bot",
         content: "I'm sorry, I encountered an error. Please try again.",
       };
-
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
-  };
-
-
+  }
+};
   const showInitialOptions = selectedMode === null;
 
   if (isLoaded && !user) {
@@ -153,11 +211,11 @@ const DevSpotChatInterface = () => {
                 Please sign in to create hackathons and access all DevSpot
                 features.
               </p>
-              <SignInWithMetamaskButton mode="modal">
+              <SignInButton mode="modal">
                 <button className="btn-primary w-full">
                   Sign In to Continue
                 </button>
-              </SignInWithMetamaskButton>
+              </SignInButton>
             </div>
           </div>
         </div>
@@ -181,10 +239,9 @@ const DevSpotChatInterface = () => {
                   sender={message.sender}
                   isButtonVisible={false}
                   buttonText="Check and Pay"
-                  onButtonClick={()=>router.push(`/draft/${hackathonId}`)}
+                  onButtonClick={() => router.push(`/draft/${hackathonId}`)}
                   selectableItems={JUDGING_CRITERIA}
                   showSelectableItems={isJudgingCriteriaVisible}
-
                 />
 
                 {message.sender === "bot" &&
@@ -223,12 +280,16 @@ const DevSpotChatInterface = () => {
           <ChatInput
             onSend={handleSendMessage}
             placeholder="Reply to Spot..."
-            disabled={isLoading}
+            disabled={isLoading || showInitialOptions}
             isLoading={isLoading}
+            selectableItems={selectableItems}
+            showSelectableItems={showSelectableItems}
+            showImageUpload={showImageUpload}
+            imageUploadType={imageUploadType}
+            hackathonId={hackathonId}
           />
         </div>
       </div>
-
     </div>
   );
 };
